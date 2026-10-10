@@ -15,12 +15,12 @@ class SqueezeBreakout(BaseStrategy):
         "squeeze_lookback": 6,  # squeeze must have been on within this many bars
         "vol_mult": 1.5,
         "trend_ema": 50,
-        "stop_atr": 1.5,
+        "stop_atr": 2.0,  # x 1h ATR (see BaseStrategy atr_tf)
         "rr": 2.5,
     }
     param_grid = {"kc_k": [1.25, 1.5, 2.0], "vol_mult": [1.2, 1.5, 2.0], "rr": [2.0, 2.5, 3.0]}
 
-    def warmup_bars(self, bar) -> int:
+    def indicator_warmup(self, bar) -> int:
         return 300
 
     def indicators(self, df: pd.DataFrame) -> dict[str, pd.Series]:

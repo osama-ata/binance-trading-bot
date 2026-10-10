@@ -8,7 +8,8 @@ class VwapReversion(BaseStrategy):
     """Mean reversion to the daily (UTC) session VWAP, only in a range regime (low ADX).
 
     Long when price closes below VWAP - k*sigma, RSI is oversold and the bar closes green.
-    Target is the VWAP itself; also exits early if price closes back above VWAP.
+    Target is the VWAP itself (the base class rejects it if it is too close to clear fees); also exits early
+    if price closes back above VWAP.
     """
 
     name = "vwap_reversion"
@@ -17,13 +18,12 @@ class VwapReversion(BaseStrategy):
         "rsi_n": 14,
         "rsi_max": 30,
         "adx_max": 22,
-        "stop_atr": 1.0,
-        "min_reward_pct": 0.004,  # skip trades whose target can't clear round-trip costs comfortably
+        "stop_atr": 2.0,  # x 1h ATR (see BaseStrategy atr_tf)
         "max_bars": 36,
     }
-    param_grid = {"band_k": [1.5, 2.0, 2.5], "rsi_max": [25, 30, 35], "stop_atr": [0.75, 1.0, 1.5]}
+    param_grid = {"band_k": [1.5, 2.0, 2.5], "rsi_max": [25, 30, 35], "stop_atr": [1.5, 2.0, 2.5]}
 
-    def warmup_bars(self, bar) -> int:
+    def indicator_warmup(self, bar) -> int:
         return 300
 
     def indicators(self, df: pd.DataFrame) -> dict[str, pd.Series]:
@@ -41,7 +41,6 @@ class VwapReversion(BaseStrategy):
             and row["rsi"] <= self.p["rsi_max"]
             and row["adx"] <= self.p["adx_max"]
             and row["Close"] > row["Open"]
-            and row["vwap"] / row["Close"] - 1 >= self.p["min_reward_pct"]
         ):
             return f"vwap stretch {100 * (row['Close'] / row['vwap'] - 1):.2f}%, rsi {row['rsi']:.0f}"
         return None

@@ -22,7 +22,7 @@ class OpeningRangeBreakout(BaseStrategy):
     }
     param_grid = {"range_minutes": [15, 30, 60], "rr": [1.5, 2.0, 3.0], "max_stop_atr": [1.5, 2.0, 3.0]}
 
-    def warmup_bars(self, bar) -> int:
+    def indicator_warmup(self, bar) -> int:
         return 300
 
     def indicators(self, df: pd.DataFrame) -> dict[str, pd.Series]:

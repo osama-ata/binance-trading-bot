@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 
 class TradingEngine:
     def __init__(self, client: BinanceClient, broker: Broker, strategy: BaseStrategy, risk: RiskManager,
-                 symbols: list[str], interval: str, warmup_bars: int | None = None):
+                 symbols: list[str], interval: str, warmup_bars: int | None = None, slippage_bps: float = 0.0):
         self.client = client
         self.broker = broker
         self.strategy = strategy
@@ -24,6 +24,7 @@ class TradingEngine:
         self.symbols = symbols
         self.interval = interval
         self.bar = interval_to_timedelta(interval)
+        self.slippage = slippage_bps / 1e4
         self.keep_bars = max(warmup_bars or 0, strategy.warmup_bars(self.bar)) + 50
         self.frames: dict[str, pd.DataFrame] = {}
         self.prices: dict[str, float] = {}
@@ -39,6 +40,12 @@ class TradingEngine:
             log.info("warmup %s: %d bars up to %s", sym, len(df), df.index[-1])
         for sym, pos in self.broker.positions.items():
             log.info("resuming open position %s qty=%s entry=%.2f stop=%.2f", sym, pos.qty, pos.entry, pos.stop)
+
+    def _tick(self, symbol: str) -> float:
+        try:
+            return float(self.client.exchange_filters(symbol).tick_size) if self.client else 0.0
+        except Exception:
+            return 0.0
 
     async def on_update(self, symbol: str, bar: dict) -> None:
         self.prices[symbol] = bar["Close"]
@@ -70,10 +77,16 @@ class TradingEngine:
         pos = self.broker.positions.get(symbol)
         if pos:
             pos.bars_held += 1
-            new_stop = updated_stop(pos, bar["High"], self.strategy.p["breakeven_at_r"])
+            new_stop = updated_stop(pos, bar["High"], self.strategy.p["breakeven_at_r"], self.strategy.fee_rate,
+                                    self.slippage, self._tick(symbol))
+            reason = None
             if new_stop != pos.stop:
-                self.broker.move_stop(symbol, new_stop)
-            reason = "time stop" if pos.bars_held >= self.strategy.p["max_bars"] else self.strategy.exit_signal(ind, i)
+                if new_stop >= bar["Close"]:  # price already fell back below break-even: an exchange stop would
+                    reason = "breakeven"  # trigger immediately (and Binance rejects it), so exit at market
+                else:
+                    self.broker.move_stop(symbol, new_stop)
+            if not reason:
+                reason = "time stop" if pos.bars_held >= self.strategy.p["max_bars"] else self.strategy.exit_signal(ind, i)
             if reason:
                 self.risk.on_close(self.broker.close(symbol, bar["Close"], reason, now))
             else:
@@ -87,6 +100,9 @@ class TradingEngine:
             else:
                 equity = self.broker.equity(self.prices)
                 qty = self.risk.size(equity, sig.entry, sig.stop)
+                if qty * sig.entry >= 0.999 * self.risk.max_position_pct * equity:
+                    log.info("%s size capped by MAX_POSITION_PCT: effective risk %.2f%% (target %.2f%%)", symbol,
+                             100 * qty * (sig.entry - sig.stop) / equity, 100 * self.risk.risk_per_trade)
                 if self.broker.open(symbol, qty, sig, self.strategy.name, now):
                     self.risk.on_open()
                     log.info("%s ENTRY %s qty=%.6f stop=%.2f target=%.2f", symbol, sig.reason, qty, sig.stop, sig.target)

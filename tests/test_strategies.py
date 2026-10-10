@@ -9,7 +9,7 @@ from strategies import STRATEGIES
 # Loosened params so every strategy fires on the synthetic series
 LOOSE = {
     "ema_pullback": {"htf_fast": 10, "htf_slow": 30, "adx_min": 0, "rsi_low": 50},
-    "vwap_reversion": {"band_k": 1.0, "rsi_max": 50, "adx_max": 100, "min_reward_pct": 0.0},
+    "vwap_reversion": {"band_k": 1.0, "rsi_max": 50, "adx_max": 100},
     "squeeze_breakout": {},
     "opening_range": {},
 }

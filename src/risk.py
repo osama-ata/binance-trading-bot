@@ -36,11 +36,27 @@ class Position:
         return self.entry - self.initial_stop
 
 
-def updated_stop(pos: Position, bar_high: float, breakeven_at_r: float) -> float:
-    """Move the stop to break-even once price has travelled `breakeven_at_r` R in our favour."""
-    if breakeven_at_r > 0 and pos.stop < pos.entry and bar_high >= pos.entry + breakeven_at_r * pos.initial_risk:
-        return pos.entry
-    return pos.stop
+def breakeven_level(entry: float, fee_rate: float, slippage: float = 0.0, tick: float = 0.0) -> float:
+    """Lowest stop price at which a stop-out still nets >= 0 after both fees and exit slippage.
+
+    PnL = q*(exit - entry) - fee*q*entry - fee*q*exit >= 0  <=>  exit >= entry*(1+fee)/(1-fee),
+    and a stop fills at stop*(1-slippage). One tick is added so rounding to the tick grid can't undercut it.
+    """
+    return entry * (1 + fee_rate) / ((1 - fee_rate) * (1 - slippage)) + tick
+
+
+def breakeven_stop(entry: float, stop: float, initial_risk: float, bar_high: float, breakeven_at_r: float,
+                   fee_rate: float, slippage: float = 0.0, tick: float = 0.0) -> float:
+    """Stop after applying the break-even rule: once price has travelled `breakeven_at_r` R in our favour,
+    raise the stop to the fee-adjusted break-even level (never lower it)."""
+    if breakeven_at_r <= 0 or bar_high < entry + breakeven_at_r * initial_risk:
+        return stop
+    return max(stop, breakeven_level(entry, fee_rate, slippage, tick))
+
+
+def updated_stop(pos: Position, bar_high: float, breakeven_at_r: float, fee_rate: float = 0.0,
+                 slippage: float = 0.0, tick: float = 0.0) -> float:
+    return breakeven_stop(pos.entry, pos.stop, pos.initial_risk, bar_high, breakeven_at_r, fee_rate, slippage, tick)
 
 
 def bar_exit(pos: Position, high: float, low: float) -> tuple[str, float] | None:

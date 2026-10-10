@@ -53,11 +53,11 @@ def build_engine() -> TradingEngine:
         broker = PaperBroker(store, settings.paper_cash, settings.fee_rate, settings.slippage_bps, client=client)
 
     overrides = {"max_bars": settings.max_bars_in_trade} if settings.max_bars_in_trade else {}
-    strategy = STRATEGIES[settings.strategy](**overrides)
+    strategy = STRATEGIES[settings.strategy](fee_rate=settings.fee_rate, **overrides)
     log.info("Starting %s | strategy=%s %s | symbols=%s | interval=%s",
              mode, strategy.name, strategy.p, settings.symbols, settings.interval)
     return TradingEngine(client, broker, strategy, RiskManager.from_settings(settings),
-                         settings.symbols, settings.interval, settings.warmup_bars)
+                         settings.symbols, settings.interval, settings.warmup_bars, settings.slippage_bps)
 
 
 if __name__ == "__main__":

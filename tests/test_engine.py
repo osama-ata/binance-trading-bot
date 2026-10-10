@@ -7,9 +7,10 @@ from strategies import BaseStrategy
 
 class AlwaysLong(BaseStrategy):
     name = "always_long"
-    defaults = {"stop_atr": 1.0, "rr": 1.0, "breakeven_at_r": 0.0, "max_bars": 3}
+    defaults = {"stop_atr": 1.0, "rr": 1.0, "breakeven_at_r": 0.0, "max_bars": 3, "atr_tf": None,
+                "min_stop_fee_mult": 0.0, "min_target_fee_mult": 0.0}
 
-    def warmup_bars(self, bar) -> int:
+    def indicator_warmup(self, bar) -> int:
         return 20
 
     def indicators(self, df):

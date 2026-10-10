@@ -16,7 +16,7 @@ import pandas as pd
 from backtesting import Strategy
 from backtesting.lib import FractionalBacktest
 
-from risk import RiskManager
+from risk import RiskManager, breakeven_stop
 from strategies import STRATEGIES, BaseStrategy
 
 FRACTIONAL_UNIT = 1e-8  # trade in satoshi-sized units so crypto position sizes aren't rounded to whole coins
@@ -33,10 +33,14 @@ class _Adapter(Strategy):
     source_df: pd.DataFrame = pd.DataFrame()
     risk_kwargs: dict[str, Any] = {}
     trade_from: pd.Timestamp | None = None  # walk-forward: ignore signals before this time (indicator warmup)
+    fee_rate: float = 0.001  # per side, mirrors BacktestConfig.commission
+    slippage: float = 0.0  # per side, mirrors the backtest `spread`
 
     def init(self):
         names = {**BaseStrategy.defaults, **self.strategy_cls.defaults}
-        self.strat = self.strategy_cls(**{k: getattr(self, k) for k in names if hasattr(self, k)})
+        self.strat = self.strategy_cls(
+            fee_rate=self.fee_rate, **{k: getattr(self, k) for k in names if hasattr(self, k)}
+        )
         self.ind = self.strat.prepare(self.source_df)
         self.risk = RiskManager(**self.risk_kwargs)
         self._closed_seen = 0
@@ -52,11 +56,11 @@ class _Adapter(Strategy):
 
         if self.position:
             trade = self.trades[-1]
-            initial_risk = trade.tag  # in scaled price units
-            be_r = self.strat.p["breakeven_at_r"]
-            if be_r > 0 and trade.sl is not None and trade.sl < trade.entry_price:
-                if self.data.High[-1] >= trade.entry_price + be_r * initial_risk:
-                    trade.sl = trade.entry_price
+            if trade.sl is not None:  # same rule as the live engine (risk.breakeven_stop); prices are scaled
+                new_sl = breakeven_stop(trade.entry_price, trade.sl, trade.tag, self.data.High[-1],
+                                        self.strat.p["breakeven_at_r"], self.fee_rate, self.slippage)
+                if new_sl != trade.sl:
+                    trade.sl = new_sl
             if i - trade.entry_bar >= self.strat.p["max_bars"] or self.strat.exit_signal(self.ind, i):
                 trade.close()
             return
@@ -75,16 +79,21 @@ class _Adapter(Strategy):
         fraction = min(qty * self.data.Close[-1] / equity, 0.9999) if equity > 0 else 0
         if fraction <= 0:
             return
+        fill = self.data.Close[-1] * (1 + self.slippage)  # backtesting.py validates SL < fill < TP
+        if not sig.stop * scale < fill < sig.target * scale:
+            return
         self.buy(size=fraction, sl=sig.stop * scale, tp=sig.target * scale, tag=sig.risk_per_unit * scale)
         self.risk.on_open()
 
 
-def _make_adapter(strategy_cls: type[BaseStrategy], df: pd.DataFrame, params: dict, risk_kwargs: dict, trade_from=None):
+def _make_adapter(strategy_cls: type[BaseStrategy], df: pd.DataFrame, params: dict, cfg: "BacktestConfig",
+                  trade_from=None):
     attrs = {**BaseStrategy.defaults, **strategy_cls.defaults, **params}
     return type(
         f"{strategy_cls.__name__}Adapter",
         (_Adapter,),
-        {**attrs, "strategy_cls": strategy_cls, "source_df": df, "risk_kwargs": risk_kwargs, "trade_from": trade_from},
+        {**attrs, "strategy_cls": strategy_cls, "source_df": df, "risk_kwargs": cfg.risk_kwargs or {},
+         "trade_from": trade_from, "fee_rate": cfg.commission, "slippage": cfg.slippage_bps / 1e4},
     )
 
 
@@ -92,7 +101,7 @@ def _make_adapter(strategy_cls: type[BaseStrategy], df: pd.DataFrame, params: di
 class BacktestConfig:
     cash: float = 10_000.0
     commission: float = 0.001  # Binance spot taker fee per side
-    slippage_bps: float = 2.0
+    slippage_bps: float = 2.0  # per side (backtesting.py applies `spread` on every fill)
     risk_kwargs: dict | None = None
 
 
@@ -104,7 +113,7 @@ def _bt(df: pd.DataFrame, adapter, cfg: BacktestConfig) -> FractionalBacktest:
             adapter,
             cash=cfg.cash,
             commission=cfg.commission,
-            spread=2 * cfg.slippage_bps / 1e4,
+            spread=cfg.slippage_bps / 1e4,
             exclusive_orders=True,
             finalize_trades=True,
             fractional_unit=FRACTIONAL_UNIT,
@@ -118,7 +127,7 @@ def run_backtest(
     """Run one backtest. `df` is OHLCV with a UTC DatetimeIndex (see data.load_klines)."""
     cls = STRATEGIES[strategy] if isinstance(strategy, str) else strategy
     cfg = cfg or BacktestConfig()
-    adapter = _make_adapter(cls, df, params or {}, cfg.risk_kwargs or {}, trade_from)
+    adapter = _make_adapter(cls, df, params or {}, cfg, trade_from)
     bt = _bt(df, adapter, cfg)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -131,11 +140,19 @@ def summarize(stats: pd.Series) -> dict[str, float]:
     trades: pd.DataFrame = stats["_trades"]
     n = len(trades)
     days = max((stats["End"] - stats["Start"]).total_seconds() / 86400, 1e-9)
+    nan = float("nan")
+    avg_r = gross_r = fees_r = eff_risk = cap_bound = nan
     if n:
-        r_multiple = trades["PnL"] / (trades["Size"].abs() * trades["Tag"].astype(float) / FRACTIONAL_UNIT)
-        avg_r = float(r_multiple.mean())
-    else:
-        avg_r = float("nan")
+        risk_cash = trades["Size"].abs() * trades["Tag"].astype(float) / FRACTIONAL_UNIT  # $ at risk per trade
+        avg_r = float((trades["PnL"] / risk_cash).mean())
+        fees_r = float((trades["Commission"] / risk_cash).mean())
+        gross_r = float(((trades["PnL"] + trades["Commission"]) / risk_cash).mean())
+        equity = stats["_equity_curve"]["Equity"]
+        equity_at_entry = equity.iloc[trades["EntryBar"].clip(upper=len(equity) - 1)].to_numpy()
+        eff = risk_cash.to_numpy() / equity_at_entry
+        eff_risk = float(eff.mean() * 100)
+        target_risk = stats["_strategy"].risk.risk_per_trade
+        cap_bound = float((eff < 0.95 * target_risk).mean() * 100)  # share of trades sized by the notional cap
     return {
         "Return [%]": float(stats["Return [%]"]),
         "Buy & Hold [%]": float(stats["Buy & Hold Return [%]"]),
@@ -146,6 +163,10 @@ def summarize(stats: pd.Series) -> dict[str, float]:
         "Profit Factor": float(stats["Profit Factor"]) if n else float("nan"),
         "Expectancy [%]": float(stats["Expectancy [%]"]) if n else float("nan"),
         "Avg R": avg_r,
+        "Gross Avg R": gross_r,
+        "Fees [R]": fees_r,
+        "Effective risk [%]": eff_risk,
+        "Cap-bound trades [%]": cap_bound,
         "Exposure [%]": float(stats["Exposure Time [%]"]),
         "Sharpe": float(stats["Sharpe Ratio"]),
     }
@@ -177,7 +198,7 @@ def walk_forward(
         if test_end > df.index[-1] + bar:
             break
         train = df[(df.index >= train_start - warmup) & (df.index < train_end)]
-        adapter = _make_adapter(cls, train, {}, cfg.risk_kwargs or {}, trade_from=train_start)
+        adapter = _make_adapter(cls, train, {}, cfg, trade_from=train_start)
         bt = _bt(train, adapter, cfg)
 
         with warnings.catch_warnings():
