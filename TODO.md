@@ -5,14 +5,12 @@
 > Every item gives the **problem** (with file:line references to the code as of commit `1148706`), **what to do**, **acceptance criteria** and **sources**. Things that could not be verified are marked **[UNVERIFIED]**.
 > State at the time of writing: branch `main`, `uv run pytest -q`: 32 passed.
 >
-> **Progress log:** Phase 1 = sections 1, 5.1, 5.4, 4.1, 4.2 (DSR/PBO) and the `backtesting>=0.6.6` bump, pushed stage by stage. Stages 1–5 done; stage 6 (bump + final walk-forward) done except 1 of 20 runs. Research runs are cached in `data/research/` and tables are committed in `reports/`. **Gate verdict: FAIL** (see section 1, "Phase 1 results").
+> **Progress log:** Phase 1 = sections 1, 5.1, 5.4, 4.1, 4.2 (DSR/PBO) and the `backtesting>=0.6.6` bump, pushed stage by stage. Stages 1–6 done (all 20 final runs, plus the 5m-exec / 1h-signal comparison, finished on the Mac Studio 2026-10-11). Research runs are cached in `data/research/` and tables are committed in `reports/`. **Gate verdict: FAIL** (see section 1, "Phase 1 results").
 >
-> **Handoff (2026-10-11), to finish Phase 1 on another machine:**
-> 1. `git pull`, `uv sync`, `cp .env.example .env` (adjust). Optionally copy `data/` from the old machine: the klines plus the 19 cached runs. Cached runs only reuse if the code fingerprint matches (`1c08844fda07262b` = commit `3c85652`).
-> 2. Missing run: `uv run python scripts/wf_report.py --jobs 12 --out reports/phase1/final_bars.md`. Without the copied cache this recomputes all 20 runs (about 10–15 min on 16 cores); with it, only `donchian_ensemble` ETHUSDT 15m.
-> 3. Planned but not run: 5m execution with 1h signals for the other strategies: `uv run python scripts/wf_report.py --jobs 12 --intervals 5m --strategies ema_pullback,vwap_reversion,squeeze_breakout --set signal_tf=1h --out reports/phase1/final_5m_exec_1h_signals.md`.
-> 4. Update the results table and verdict in section 1 if these change anything, then commit and push.
-> 5. Proposed next (not yet approved): write each run's summary to a Postgres `research_runs` table as well (files stay the source for equity/folds), plus a dashboard Research tab.
+> **Handoff (2026-10-11): Phase 1 finished on the Mac Studio.** Work continues there (`~/coding/binance-trading-bot`, 20 cores, use `--jobs 16`).
+> - The missing `donchian_ensemble` ETHUSDT 15m run and the 5m-exec / 1h-signal comparison (`reports/phase1/final_5m_exec_1h_signals.md`) are done. Neither changes the verdict (still **FAIL**).
+> - The Docker stack runs again: the Dockerfile now installs from `uv.lock` (`pip install .` failed with no build backend and no README in the build context). The compose db's host port is `${POSTGRES_PORT:-5432}`; on the Studio, 5432 belongs to another project, so `.env` sets `POSTGRES_PORT=5433`.
+> - Proposed next (not yet approved): write each run's summary to a Postgres `research_runs` table as well (files stay the source for equity/folds), plus a dashboard Research tab. After that, the research directions in the gate verdict below.
 
 ---
 
@@ -128,7 +126,7 @@ Fees fell from ≈1.2R to ≈0.18R per trade, as predicted. But **gross** Avg R 
 - `summarize()` shows the fee and effective-risk metrics.
 - Re-run the walk-forward for all 4 strategies and record the before/after in this file. *(done; see "Phase 1 results" below and `reports/phase1/`)*
 
-**Phase 1 results: before/after walk-forward** (2026-04-01 → 2026-10-09, train 30d / test 7d, out-of-sample only; full tables in `reports/phase1/baseline.md`, `after_stage1.md` and `final_bars.md`):
+**Phase 1 results: before/after walk-forward** (2026-04-01 → 2026-10-09, train 30d / test 7d, out-of-sample only; full tables in `reports/phase1/baseline.md`, `after_stage1.md`, `final_bars.md` and `final_5m_exec_1h_signals.md`):
 
 | Strategy · Symbol · Bars | Before Phase 1: OOS % (trades) | After Phase 1: OOS % (trades) | After: DSR / PBO |
 |---|---|---|---|
@@ -146,13 +144,27 @@ Fees fell from ≈1.2R to ≈0.18R per trade, as predicted. But **gross** Avg R 
 | donchian_ensemble · BTC · 5m exec / 1h signals | (new) | +0.24 (16) | 0.05 / 0.69 |
 | donchian_ensemble · BTC · 15m exec / 1h signals | (new) | +0.36 (16) | 0.06 / 0.79 |
 | donchian_ensemble · ETH · 5m exec / 1h signals | (new) | −0.98 (15) | 0.07 / 0.61 |
+| donchian_ensemble · ETH · 15m exec / 1h signals | (new) | −0.94 (15) | 0.06 / 0.54 |
 
 Buy & hold over the same windows was +4% to +35%. Caveats:
 - The baseline charged slippage twice (4 bps/side vs 2), so it is slightly pessimistic.
 - `vwap_reversion` now never trades: its VWAP targets are too close to clear the fee hurdle.
 - The opening-range rows changed for two reasons: the fee gates and the New York session time.
 
-**Gate verdict (Phase 1 → Phase 2): FAIL.** No strategy/symbol/timeframe reaches DSR > 0.95 with PBO < 0.5. The best is opening_range on ETH 5m: +0.96% OOS, DSR 0.45, PBO 0.25, so promising but not significant. Per the plan, **do not start Phase 2 (live hardening)**. Keep researching: Donchian/trend on slower bars (4h/1d signals), regime filters (5.5), and opening_range on more symbols and longer history.
+**5m execution with 1h signals** for the other strategies (`final_5m_exec_1h_signals.md`; compare with the 5m/5m rows above):
+
+| Strategy · Symbol | 5m signals: OOS % (trades) | 1h signals: OOS % (trades) | 1h: DSR / PBO |
+|---|---|---|---|
+| ema_pullback · BTC | −1.03 (12) | 0.00 (0) | – / 0.49 |
+| ema_pullback · ETH | −1.93 (26) | −0.07 (2) | 0.00 / 0.49 |
+| vwap_reversion · BTC | 0.00 (0) | 0.00 (0) | – / 0.00 |
+| vwap_reversion · ETH | 0.00 (0) | 0.00 (0) | – / 0.00 |
+| squeeze_breakout · BTC | −5.81 (96) | −1.14 (21) | 0.01 / 0.84 |
+| squeeze_breakout · ETH | −12.50 (191) | −0.14 (28) | 0.22 / 0.80 |
+
+Slower signals cut trade counts by 4–7× and most of the fee bleed, but nothing turns positive. The ema_pullback and vwap_reversion rules almost never fire on 1h. squeeze_breakout's PBO above 0.8 means the in-sample parameter choice is mostly noise.
+
+**Gate verdict (Phase 1 → Phase 2): FAIL.** No strategy/symbol/timeframe reaches DSR > 0.95 with PBO < 0.5 (all 20 final runs plus the 6 1h-signal runs). The best is opening_range on ETH 5m: +0.96% OOS, DSR 0.45, PBO 0.25, so promising but not significant. Per the plan, **do not start Phase 2 (live hardening)**. Keep researching: Donchian/trend on slower bars (4h/1d signals), regime filters (5.5), and opening_range on more symbols and longer history.
 
 ---
 
@@ -447,7 +459,7 @@ These were verified in the installed backtesting.py 0.6.5 source.
     - Timeframe strings are normalised (`15m` → `15min`, `1d` → `1D`); pandas reads `15m` as *months*.
     - Speed-up: strategy rows are converted to dicts once per frame instead of building a pandas Series per bar (tests 9.4 s → 3.2 s; a 6-month 5m walk-forward ≈ 2 min). `scripts/wf_report.py` now runs jobs in parallel processes (`--jobs`).
     - Tests: no look-ahead with `signal_tf` = 15min/1h (cuts inside forming bars), signals only on signal-bar closes, aligned values equal the resampled bar.
-  - **Results:** see the Phase 1 results table in section 1 (recorded once the runs finish).
+  - **Results:** see the Phase 1 results tables in section 1. 1h signals reduce losses but nothing passes the gate.
 - [ ] **5.5 Regime routing with simple deterministic measures:** Kaufman Efficiency Ratio, Choppiness Index and realized-volatility percentile on 1h.
   - Run VWAP mean-reversion and EMA pullback only when ER(1h) is low and volatility is mid-range.
   - Run squeeze and opening range only when ER is rising, during 13–16 UTC.

@@ -10,7 +10,7 @@ services:
     volumes:
       - ./data/postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"  # host port; set POSTGRES_PORT in .env if 5432 is taken
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -31,6 +31,7 @@ services:
       - .env
     environment:
       POSTGRES_HOST: db  # .env uses localhost for running outside Docker
+      POSTGRES_PORT: 5432
 
   # 3. The GUI (Frontend)
   dashboard:
@@ -47,3 +48,4 @@ services:
       - .env
     environment:
       POSTGRES_HOST: db  # .env uses localhost for running outside Docker
+      POSTGRES_PORT: 5432

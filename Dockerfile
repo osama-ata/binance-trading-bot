@@ -1,17 +1,14 @@
 FROM python:3.11-slim
 
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
 WORKDIR /app
 
-# Install system dependencies for building python packages
-RUN apt-get update && apt-get install -y \
-    build-essential \
-    libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-COPY pyproject.toml .
-# Install dependencies directly from pyproject.toml
-RUN pip install --no-cache-dir .
-
-ENV PYTHONUNBUFFERED=1
+# Install the locked dependencies into the system interpreter (no project build needed)
+ENV UV_PROJECT_ENVIRONMENT=/usr/local \
+    UV_COMPILE_BYTECODE=1 \
+    PYTHONUNBUFFERED=1
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
 
 COPY . .
