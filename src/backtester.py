@@ -231,3 +231,45 @@ def walk_forward(
 
     equity = pd.concat(equity_parts) if equity_parts else pd.Series(dtype=float)
     return pd.DataFrame(folds), equity
+
+
+def grid_returns(
+    df: pd.DataFrame, strategy: str, grid: dict[str, list] | None = None, cfg: BacktestConfig | None = None,
+    params: dict | None = None, freq: str = "1D",
+) -> pd.DataFrame:
+    """Per-period (default daily) returns of every grid combination over the whole of `df` (after warm-up).
+
+    This T x N matrix is the input for PBO/CSCV and for the trial-Sharpe variance used by the Deflated Sharpe.
+    """
+    from itertools import product
+
+    from overfitting import period_returns
+
+    cls = STRATEGIES[strategy]
+    grid = grid or cls.param_grid
+    params = params or {}
+    bar = df.index[1] - df.index[0]
+    trade_from = df.index[0] + cls(**params).warmup_bars(bar) * bar
+    cols = {}
+    for values in product(*grid.values()):
+        combo = dict(zip(grid, values))
+        stats, _ = run_backtest(df, cls, {**params, **combo}, cfg, trade_from=trade_from)
+        eq = stats["_equity_curve"]["Equity"]
+        cols[", ".join(f"{k}={v}" for k, v in combo.items())] = period_returns(eq[eq.index >= trade_from], freq)
+    return pd.DataFrame(cols).fillna(0.0)
+
+
+def overfitting_report(df: pd.DataFrame, strategy: str, oos_equity: pd.Series, cfg: BacktestConfig | None = None,
+                       params: dict | None = None, n_blocks: int = 16) -> dict:
+    """PBO (CSCV over the full-period grid) and Deflated Sharpe of the stitched walk-forward OOS equity."""
+    from overfitting import deflated_sharpe, pbo_cscv, period_returns, probabilistic_sharpe, sharpe
+
+    m = grid_returns(df, strategy, cfg=cfg, params=params)
+    trial_srs = [sharpe(m[c]) for c in m.columns]
+    oos = period_returns(oos_equity) if len(oos_equity) else pd.Series(dtype=float)
+    out = {"n_trials": m.shape[1], "n_days": m.shape[0]}
+    out.update(pbo_cscv(m, n_blocks=n_blocks))
+    out["oos_sharpe_ann"] = sharpe(oos) * np.sqrt(365) if len(oos) > 2 else float("nan")
+    out["psr"] = probabilistic_sharpe(oos) if len(oos) > 2 else float("nan")
+    out["dsr"] = deflated_sharpe(oos, trial_srs) if len(oos) > 2 else float("nan")
+    return out

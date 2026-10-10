@@ -5,7 +5,7 @@
 > Every item gives the **problem** (with file:line references to the code as of commit `1148706`), **what to do**, **acceptance criteria** and **sources**. Things that could not be verified are marked **[UNVERIFIED]**.
 > State at the time of writing: branch `main`, `uv run pytest -q`: 32 passed.
 >
-> **Progress log:** Phase 1 = sections 1, 5.1, 5.4, 4.1, 4.2 (DSR/PBO) and the `backtesting>=0.6.6` bump, pushed stage by stage. Stage 1 (section 1, fee hurdle) done; stage 2 (5.4, signal timeframe + Donchian ensemble) done; stage 3 (5.1, New York session time) done; stage 4 (4.1, look-ahead + warm-up checks) done.
+> **Progress log:** Phase 1 = sections 1, 5.1, 5.4, 4.1, 4.2 (DSR/PBO) and the `backtesting>=0.6.6` bump, pushed stage by stage. Stage 1 (section 1, fee hurdle) done; stage 2 (5.4, signal timeframe + Donchian ensemble) done; stage 3 (5.1, New York session time) done; stage 4 (4.1, look-ahead + warm-up checks) done; stage 5 (4.2, Deflated Sharpe + PBO, now columns in `scripts/wf_report.py`) done.
 
 ---
 
@@ -338,18 +338,18 @@ These were verified in the installed backtesting.py 0.6.5 source.
 
 ### 4.2 Overfitting statistics on the walk-forward results (P1)
 
-- [ ] **Deflated Sharpe Ratio / Probabilistic Sharpe Ratio.**
+- [x] **Deflated Sharpe Ratio / Probabilistic Sharpe Ratio.** *(done in Phase 1 stage 5: `src/overfitting.py` `probabilistic_sharpe`, `expected_max_sharpe`, `deflated_sharpe`; own code from the papers, no SciPy needed (stdlib `NormalDist`). `backtester.overfitting_report()` deflates the stitched walk-forward OOS daily returns by the Sharpe variance of the full parameter grid.)*
   - Correct the selected parameter set's Sharpe for the number of grid trials. About 30 lines; formula from Bailey & López de Prado ([SSRN 2460551](https://papers.ssrn.com/abstract=2460551)).
   - Reference code: [esvhd/pypbo](https://github.com/esvhd/pypbo) (**AGPL**, don't copy) and [zoonek/2025-sharpe-ratio](https://github.com/zoonek/2025-sharpe-ratio) (PSR, MinTRL, FDR; license **[UNVERIFIED]**).
   - Write our own implementation.
-- [ ] **PBO via CSCV.**
+- [x] **PBO via CSCV.** *(done in Phase 1 stage 5: `overfitting.pbo_cscv` (16 blocks → all 12,870 splits, or a random subset via `max_splits`); the T×N matrix comes from `backtester.grid_returns()`, i.e. daily returns of every grid combination over the full period. Also reports the in-sample vs out-of-sample Sharpe of the in-sample winner.)*
   - Build a T×N matrix of per-period (e.g. daily) returns for every grid combination. `walk_forward` already runs them all inside `bt.optimize`; capture the per-combo equity or returns.
   - Split into S = 16 blocks. For each of the C(S, S/2) in-sample/out-of-sample splits, take the in-sample best combo's out-of-sample rank.
   - PBO = share of splits where that rank is below the median.
   - Other implementations: pypbo, the R package [pbo](https://github.com/mrbcuda/pbo).
-- [ ] **Combinatorial Purged Cross-Validation (CPCV).** Use [`skfolio.model_selection.CombinatorialPurgedCV`](https://skfolio.org/generated/skfolio.model_selection.CombinatorialPurgedCV.html) (BSD, v1.8.1) purely as an index splitter: `n_folds`, `n_test_folds`, `purged_size`, `embargo_size`, `recombined_paths`. It gives many out-of-sample paths instead of one.
-- [ ] **White's Reality Check / Hansen SPA.** [`arch.bootstrap.SPA`](https://arch.readthedocs.io/en/latest/multiple-comparison/generated/arch.bootstrap.SPA.html) (NCSA, arch 8.0.0): losses = −per-bar returns of each combo vs a flat or buy-and-hold benchmark. StepM and MCS are also in `arch.bootstrap` **[UNVERIFIED details]**.
-- [ ] **Walk-forward diagnostics.** Per fold, log the chosen parameters, the train→test SQN degradation and parameter stability. Save heatmaps (`return_heatmap=True`).
+- [ ] **Combinatorial Purged Cross-Validation (CPCV).** *(not in Phase 1)* Use [`skfolio.model_selection.CombinatorialPurgedCV`](https://skfolio.org/generated/skfolio.model_selection.CombinatorialPurgedCV.html) (BSD, v1.8.1) purely as an index splitter: `n_folds`, `n_test_folds`, `purged_size`, `embargo_size`, `recombined_paths`. It gives many out-of-sample paths instead of one.
+- [ ] **White's Reality Check / Hansen SPA.** *(not in Phase 1)* [`arch.bootstrap.SPA`](https://arch.readthedocs.io/en/latest/multiple-comparison/generated/arch.bootstrap.SPA.html) (NCSA, arch 8.0.0): losses = −per-bar returns of each combo vs a flat or buy-and-hold benchmark. StepM and MCS are also in `arch.bootstrap` **[UNVERIFIED details]**.
+- [ ] **Walk-forward diagnostics.** *(partly: the fold table already has the chosen params and train score per fold; heatmaps and stability metrics not done)* Per fold, log the chosen parameters, the train→test SQN degradation and parameter stability. Save heatmaps (`return_heatmap=True`).
 
 ### 4.3 Monte Carlo
 
