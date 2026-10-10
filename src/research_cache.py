@@ -12,6 +12,7 @@ never reused. Results live in data/research/<key>/ (gitignored, like the kline c
 
 data/research/index.csv gets one line per computed run, for browsing.
 """
+import fcntl
 import hashlib
 import json
 from functools import lru_cache
@@ -70,5 +71,7 @@ def save(key: str, spec: dict, summary: dict, folds: pd.DataFrame | None = None,
     index = ROOT / "index.csv"
     row = pd.DataFrame([{"key": key, "code": code_fingerprint(), **{f"spec.{k}": v for k, v in spec.items()},
                          **summary}])
-    row.to_csv(index, mode="a", header=not index.exists(), index=False)
+    with open(ROOT / ".index.lock", "w") as lock:  # parallel report workers append concurrently
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        row.to_csv(index, mode="a", header=not index.exists(), index=False)
     return d
