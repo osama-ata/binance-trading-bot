@@ -67,6 +67,12 @@ Run the dashboard (http://localhost:8501):
 uv run streamlit run src/dashboard.py
 ```
 
+Run a walk-forward report for every strategy (results are cached in `data/research/`; add `--out reports/<name>.md` to keep the table):
+
+```bash
+uv run python scripts/wf_report.py --jobs 6
+```
+
 Run the tests:
 
 ```bash

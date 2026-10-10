@@ -367,6 +367,10 @@ These were verified in the installed backtesting.py 0.6.5 source.
 
 ### 4.5 Reporting
 
+- [x] **Research persistence** *(added during Phase 1 at the user's request)*.
+  - `src/research_cache.py` caches every `scripts/wf_report.py` run in `data/research/<key>/` (spec, summary, per-fold table, OOS equity) plus `data/research/index.csv`. The key covers the full run spec and a fingerprint of the result-affecting code (strategies, indicators, risk, backtester, data loading) and the backtesting/pandas versions. Identical reruns are instant; any code change invalidates automatically. Use `--refresh` to force a recompute.
+  - `--out reports/...md` writes the table to a file. Reports under `reports/` are committed, so results survive across machines; `data/` (klines + research cache) stays gitignored and can be copied between machines.
+
 - [ ] Use **quantstats** 0.0.86 (Apache-2.0, maintained) on daily returns resampled from the stitched out-of-sample equity. Optional: ffn 1.4.0 (MIT).
 - Skip pyfolio-reloaded and empyrical-reloaded (no release in over a year).
 
