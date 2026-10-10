@@ -1,78 +1,68 @@
-import time
+"""Bot entry point: `python src/main.py` (settings come from .env, see .env.example)."""
+import asyncio
+import logging
 import os
 import sys
-from dotenv import load_dotenv
-from database import init_db, Trade
-from exchange_wrapper import ExchangeWrapper 
+from pathlib import Path
 
-# Load environment variables
-load_dotenv()
+from binance_client import BinanceClient
+from brokers import BinanceBroker, PaperBroker, Store
+from config import settings
+from database import init_db
+from engine import TradingEngine
+from risk import RiskManager
+from strategies import STRATEGIES
 
-# Configuration
-MODE: str = os.getenv('TRADING_MODE', 'VIRTUAL') # Default to Virtual
-API_KEY: str | None = os.getenv('BINANCE_API_KEY')
-SECRET: str | None = os.getenv('BINANCE_SECRET')
+LOG_DIR = Path(__file__).resolve().parent.parent / "logs"
 
-# Initialize Wrapper
-# If MODE is VIRTUAL, keys can be None/Empty
-exchange = ExchangeWrapper(mode=MODE, api_key=API_KEY, secret=SECRET)
 
-# Database Setup
-try:
-    Session = init_db()
-    session = Session()
-except Exception as e:
-    print(f"❌ Database connection failed: {e}")
-    print("Ensure Docker is running and POSTGRES env vars are set.")
-    sys.exit(1)
+def setup_logging() -> None:
+    LOG_DIR.mkdir(exist_ok=True)
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO"),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        handlers=[logging.StreamHandler(), logging.FileHandler(LOG_DIR / "bot.log")],
+    )
+    # The Binance SDK logs every websocket ping/subscribe on the root logger at INFO; keep only its warnings.
+    for handler in logging.getLogger().handlers:
+        handler.addFilter(lambda r: r.name != "root" or r.levelno >= logging.WARNING)
 
-SYMBOLS: list[str] = ['BTC/USDT', 'ETH/USDT']
 
-def trading_loop() -> None:
-    """
-    Main trading loop. 
-    Fetches prices, checks strategy logic, and executes trades.
-    """
-    print(f"🚀 Starting Engine in {MODE} mode")
-    
-    while True:
-        for symbol in SYMBOLS:
-            try:
-                # 1. Fetch Data (Public - works without login)
-                price = exchange.fetch_price(symbol)
-                balance = exchange.get_balance()
-                print(f"[{symbol}] {price} (Bal: {balance})")
+def build_engine() -> TradingEngine:
+    log = logging.getLogger("main")
+    live = settings.trading_mode == "LIVE"
+    if live and settings.binance_env == "prod" and os.getenv("CONFIRM_LIVE_PROD") != "yes":
+        sys.exit("Refusing to trade real money: set CONFIRM_LIVE_PROD=yes together with BINANCE_ENV=prod.")
 
-                # 2. Strategy Logic (Mock RSI)
-                # In real life, use: candles = exchange.fetch_ohlcv(symbol)
-                # For demo purposes, we buy if price ends in a small digit (random)
-                should_buy = (price % 10 < 2) 
-                
-                if should_buy:
-                    # 3. Execute (Virtual or Real handled automatically)
-                    order = exchange.place_order(symbol, 'BUY', 0.0001)
-                    
-                    if order and order['status'] == 'FILLED':
-                        # Log to DB
-                        db_trade = Trade(
-                            symbol=symbol,
-                            side='BUY',
-                            price=order['price'],
-                            quantity=order['amount']
-                        )
-                        session.add(db_trade)
-                        session.commit()
-                        print(f"✅ ORDER EXECUTED: {symbol} @ {order['price']}")
+    client = BinanceClient(
+        env=settings.binance_env,
+        api_key=settings.api_key if live else None,
+        api_secret=settings.api_secret,
+        private_key=settings.private_key,
+    )
+    try:
+        factory = init_db()
+    except Exception as e:
+        sys.exit(f"Database connection failed ({e}). Start it with `docker compose up -d db`.")
 
-            except Exception as e:
-                print(f"⚠️ Error handling {symbol}: {e}")
-        
-        time.sleep(10)
+    mode = f"LIVE-{settings.binance_env}" if live else "VIRTUAL"
+    store = Store(factory, mode)
+    if live:
+        broker = BinanceBroker(store, client, fee_rate=settings.fee_rate)
+    else:
+        broker = PaperBroker(store, settings.paper_cash, settings.fee_rate, settings.slippage_bps, client=client)
+
+    overrides = {"max_bars": settings.max_bars_in_trade} if settings.max_bars_in_trade else {}
+    strategy = STRATEGIES[settings.strategy](**overrides)
+    log.info("Starting %s | strategy=%s %s | symbols=%s | interval=%s",
+             mode, strategy.name, strategy.p, settings.symbols, settings.interval)
+    return TradingEngine(client, broker, strategy, RiskManager.from_settings(settings),
+                         settings.symbols, settings.interval, settings.warmup_bars)
+
 
 if __name__ == "__main__":
+    setup_logging()
     try:
-        trading_loop()
+        asyncio.run(build_engine().run())
     except KeyboardInterrupt:
-        print("\n🛑 Bot stopped by user.")
-    except Exception as e:
-        print(f"🔥 Critical error: {e}")
+        logging.getLogger("main").info("Bot stopped by user.")

@@ -11,3 +11,9 @@ wheels/
 
 # Docker data
 data/
+
+# Secrets and local artefacts
+.env
+logs/
+.DS_Store
+.pytest_cache/

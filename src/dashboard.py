@@ -1,129 +1,194 @@
-import streamlit as st
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
-from dotenv import load_dotenv
-from database import get_engine
-from backtester import run_backtest
-from exchange_wrapper import ExchangeWrapper
+"""Streamlit dashboard: `streamlit run src/dashboard.py`."""
+import datetime as dt
 
-load_dotenv()
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+from sqlalchemy import text
+
+from backtester import BacktestConfig, run_backtest, summarize, walk_forward
+from config import settings
+from data import load_klines
+from database import get_engine
+from strategies import STRATEGIES
 
 st.set_page_config(page_title="Crypto Commander", layout="wide")
 
-# Initialize Exchange Wrapper for data fetching
-exchange = ExchangeWrapper(mode='VIRTUAL')
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+INTERVALS = ["1m", "5m", "15m", "30m", "1h", "4h"]
 
-# --- 1. SIDEBAR CONTROLS ---
-st.sidebar.header("⚙️ Settings")
 
-# Date Range Picker
-start_date = st.sidebar.date_input("Start Date", value=pd.to_datetime("2023-01-01"))
-end_date = st.sidebar.date_input("End Date", value=pd.to_datetime("today"))
+@st.cache_resource
+def db_engine():
+    return get_engine()
 
-# Fetch Data from DB for Trades/Monitor
-engine = get_engine()
-try:
-    query = f"""
-    SELECT * FROM trades 
-    WHERE timestamp >= '{start_date}' AND timestamp <= '{end_date}'
-    ORDER BY timestamp ASC
-    """
-    df = pd.read_sql(query, engine)
-except Exception as e:
-    st.error(f"Database Error: {e}")
-    df = pd.DataFrame()
 
-# Multi-Coin Selector for Monitor
-available_coins = ['BTC/USDT', 'ETH/USDT'] # Default strings if DB empty
-if not df.empty:
-    available_coins = df['symbol'].unique()
-    
-selected_coins = st.sidebar.multiselect("Select Coins to Compare", available_coins, default=available_coins[:1] if len(available_coins) > 0 else None)
+@st.cache_data(ttl=300, show_spinner=False)
+def klines(symbol: str, interval: str, start: dt.date, end: dt.date) -> pd.DataFrame:
+    return load_klines(symbol, interval, start, end)
 
-# Chart Type
-chart_type = st.sidebar.radio("Chart Type", ["Line", "Candlestick", "Normalized (%)"])
 
-# --- 2. MAIN TABS ---
-tab1, tab2 = st.tabs(["📈 Market Overview", "🛠️ Strategy Backtester"])
+def query(sql: str, **params) -> pd.DataFrame:
+    try:
+        with db_engine().connect() as conn:
+            return pd.read_sql(text(sql), conn, params=params)
+    except Exception as e:
+        st.error(f"Database error: {e}")
+        return pd.DataFrame()
 
-with tab1:
-    st.header("Market Comparison")
-    
-    if df.empty:
-        st.warning("No trade data found in database. Start the bot to see live trades here.")
-    elif selected_coins:
-        filtered_df = df[df['symbol'].isin(selected_coins)]
-        
-        if chart_type == "Line":
-            fig = px.line(filtered_df, x='timestamp', y='price', color='symbol', title="Price Comparison")
-            
-        elif chart_type == "Normalized (%)":
-            # Normalize prices to start at 0% for fair comparison
-            normalized_df = filtered_df.copy()
-            for coin in selected_coins:
-                coin_data = normalized_df[normalized_df['symbol'] == coin]
-                if not coin_data.empty:
-                    start_price = coin_data.iloc[0]['price']
-                    normalized_df.loc[normalized_df['symbol'] == coin, 'price'] = (
-                        (normalized_df['price'] - start_price) / start_price
-                    ) * 100
-                
-            fig = px.line(normalized_df, x='timestamp', y='price', color='symbol', 
-                          title="Relative Performance (%)", labels={'price': 'Return %'})
 
-        elif chart_type == "Candlestick":
-            # Note: Candlestick usually only makes sense for 1 coin at a time
-            coin_to_plot = st.selectbox("Select Coin for Candle Chart", selected_coins)
-            coin_data = df[df['symbol'] == coin_to_plot]
-            
-            # Creating a mock OHLC structure since our simple DB only has 'price'
-            # In a real app, you would save Open/High/Low/Close in the DB
-            fig = go.Figure(data=[go.Candlestick(x=coin_data['timestamp'],
-                open=coin_data['price'], high=coin_data['price']*1.001,
-                low=coin_data['price']*0.999, close=coin_data['price'])])
-            fig.update_layout(title=f"{coin_to_plot} Candles")
+def candles(df: pd.DataFrame, trades: pd.DataFrame | None = None, title: str = "") -> go.Figure:
+    fig = go.Figure(go.Candlestick(x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"],
+                                   name="price"))
+    if trades is not None and not trades.empty:
+        fig.add_scatter(x=trades["entry_time"], y=trades["entry_price"], mode="markers", name="entry",
+                        marker=dict(symbol="triangle-up", size=11, color="#2ca02c"))
+        fig.add_scatter(x=trades["exit_time"], y=trades["exit_price"], mode="markers", name="exit",
+                        marker=dict(symbol="triangle-down", size=11, color="#d62728"))
+    fig.update_layout(title=title, xaxis_rangeslider_visible=False, height=520, margin=dict(t=40, b=10))
+    return fig
 
-        st.plotly_chart(fig, use_container_width=True)
 
-with tab2:
-    st.header("Strategy Backtester (SMA Cross)")
-    st.write("Backtest strategies using historical market data from Binance.")
-    
-    col_b1, col_b2, col_b3, col_b4 = st.columns(4)
-    bt_coin = col_b1.selectbox("Select Coin", ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'XRP/USDT'])
-    bt_timeframe = col_b1.selectbox("Timeframe", ['1h', '4h', '1d'], index=0)
-    fast_ma = col_b2.number_input("Fast MA", min_value=1, value=10)
-    slow_ma = col_b3.number_input("Slow MA", min_value=2, value=20)
-    initial_cash = col_b4.number_input("Initial Cash", min_value=1000, value=100000, step=1000)
-    
-    if st.button("Run Backtest"):
-        with st.spinner(f'Fetching {bt_timeframe} data for {bt_coin} and Simulating...'):
+def strategy_params(strategy: str, key: str) -> dict:
+    cls = STRATEGIES[strategy]
+    params = {}
+    defaults = {**cls.defaults}
+    cols = st.columns(4)
+    for n, (name, default) in enumerate(defaults.items()):
+        col = cols[n % 4]
+        if isinstance(default, bool) or isinstance(default, str):
+            params[name] = col.text_input(name, str(default), key=f"{key}-{name}")
+        elif isinstance(default, int):
+            params[name] = col.number_input(name, value=default, step=1, key=f"{key}-{name}")
+        else:
+            params[name] = col.number_input(name, value=float(default), format="%.4f", key=f"{key}-{name}")
+    return params
+
+
+tab_live, tab_bt, tab_wf = st.tabs(["📈 Live / Paper", "🛠️ Backtest", "🔁 Walk-forward"])
+
+# ---------------- Live / paper monitoring ----------------
+with tab_live:
+    modes = query("SELECT DISTINCT mode FROM equity_snapshots")
+    mode_options = modes["mode"].tolist() if not modes.empty else ["VIRTUAL"]
+    c1, c2, c3 = st.columns(3)
+    mode = c1.selectbox("Mode", mode_options)
+    start = c2.date_input("From", dt.date.today() - dt.timedelta(days=7))
+    end = c3.date_input("To", dt.date.today())
+    end_excl = end + dt.timedelta(days=1)  # include the whole end day
+
+    equity = query(
+        "SELECT timestamp, equity FROM equity_snapshots WHERE mode = :m AND timestamp >= :s AND timestamp < :e "
+        "ORDER BY timestamp", m=mode, s=start, e=end_excl,
+    )
+    closed = query(
+        "SELECT symbol, strategy, entry_reason, opened_at AS entry_time, entry_price, closed_at AS exit_time, "
+        "exit_price, exit_reason, qty, pnl FROM positions WHERE mode = :m AND status = 'CLOSED' "
+        "AND closed_at >= :s AND closed_at < :e ORDER BY closed_at", m=mode, s=start, e=end_excl,
+    )
+    open_pos = query(
+        "SELECT symbol, strategy, opened_at, qty, entry_price, stop, target, bars_held, entry_reason "
+        "FROM positions WHERE mode = :m AND status = 'OPEN'", m=mode,
+    )
+
+    k1, k2, k3, k4 = st.columns(4)
+    k1.metric("Equity", f"{equity['equity'].iloc[-1]:,.2f}" if not equity.empty else "—")
+    k2.metric("Realised PnL", f"{closed['pnl'].sum():,.2f}" if not closed.empty else "0.00")
+    k3.metric("Trades", len(closed))
+    k4.metric("Win rate", f"{(closed['pnl'] > 0).mean() * 100:.0f}%" if not closed.empty else "—")
+
+    if not equity.empty:
+        st.plotly_chart(go.Figure(go.Scatter(x=equity["timestamp"], y=equity["equity"], name="equity"))
+                        .update_layout(title="Equity", height=300, margin=dict(t=40, b=10)), width="stretch")
+    st.subheader("Open positions")
+    st.dataframe(open_pos, width="stretch", hide_index=True)
+
+    st.subheader("Chart")
+    c1, c2 = st.columns(2)
+    sym = c1.selectbox("Symbol", sorted(set(settings.symbols) | set(closed.get("symbol", pd.Series()).unique())))
+    tf = c2.selectbox("Timeframe", INTERVALS, index=INTERVALS.index(settings.interval) if settings.interval in INTERVALS else 1)
+    try:
+        px = klines(sym, tf, start, end)
+        sym_trades = closed[closed["symbol"] == sym] if not closed.empty else None
+        st.plotly_chart(candles(px, sym_trades, f"{sym} {tf}"), width="stretch")
+    except Exception as e:
+        st.error(f"Could not load candles: {e}")
+    st.subheader("Closed trades")
+    st.dataframe(closed, width="stretch", hide_index=True)
+
+# ---------------- Backtest ----------------
+with tab_bt:
+    c1, c2, c3, c4 = st.columns(4)
+    bt_strategy = c1.selectbox("Strategy", list(STRATEGIES), key="bt-strat")
+    bt_symbol = c2.selectbox("Symbol", SYMBOLS, key="bt-sym")
+    bt_tf = c3.selectbox("Timeframe", INTERVALS, index=2, key="bt-tf")
+    bt_start = c4.date_input("Start", dt.date.today() - dt.timedelta(days=90), key="bt-start")
+    c1, c2, c3, c4 = st.columns(4)
+    bt_end = c1.date_input("End", dt.date.today(), key="bt-end")
+    cash = c2.number_input("Initial cash", 1_000, 10_000_000, 10_000, step=1_000)
+    fee = c3.number_input("Fee per side", 0.0, 0.01, settings.fee_rate, format="%.5f",
+                          help="Binance spot: 0.001 (0.075% = 0.00075 when paying fees in BNB)")
+    slip = c4.number_input("Slippage (bps)", 0.0, 50.0, settings.slippage_bps)
+    with st.expander("Strategy parameters"):
+        params = strategy_params(bt_strategy, "bt")
+
+    if st.button("Run backtest", type="primary"):
+        with st.spinner("Loading history from data.binance.vision and simulating…"):
             try:
-                # 1. Fetch Real Historical Data
-                bt_data = exchange.fetch_ohlcv_df(bt_coin, timeframe=bt_timeframe, limit=500)
-                
-                if bt_data.empty:
-                    st.error("No data returned from exchange.")
-                else:
-                    # 2. Run Backtest
-                    stats, bt_instance = run_backtest(bt_data, fast_ma, slow_ma, cash=initial_cash)
-                    
-                    # 3. Results
-                    st.success(f"Return: {stats['Return [%]']:.2f}%")
-                    
-                    # Metrics Display
-                    m1, m2, m3 = st.columns(3)
-                    m1.metric("Win Rate", f"{stats['Win Rate [%]']:.1f}%")
-                    m2.metric("Max Drawdown", f"{stats['Max. Drawdown [%]']:.1f}%")
-                    m3.metric("Sharpe Ratio", f"{stats['Sharpe Ratio']:.2f}")
-                    
-                    # Plot Equity Curve
-                    st.subheader("Equity Curve")
-                    equity_curve = stats['_equity_curve']
-                    st.line_chart(equity_curve['Equity'])
-                    
-                    # Optional: Plot the trades on the chart
-                    # bt_instance.plot() # Note: backtesting.py plot uses bokeh which might need extra setup in streamlit
+                df = klines(bt_symbol, bt_tf, bt_start, bt_end)
+                stats, _ = run_backtest(df, bt_strategy, params, BacktestConfig(cash, fee, slip))
+                m = summarize(stats)
+                cols = st.columns(6)
+                for n, key in enumerate(["Return [%]", "Buy & Hold [%]", "Max Drawdown [%]", "# Trades",
+                                         "Profit Factor", "Avg R"]):
+                    cols[n].metric(key, f"{m[key]:.2f}" if isinstance(m[key], float) else m[key])
+                cols = st.columns(5)
+                for n, key in enumerate(["Win Rate [%]", "Expectancy [%]", "Trades / day", "Exposure [%]", "Sharpe"]):
+                    cols[n].metric(key, f"{m[key]:.2f}")
+                eq = stats["_equity_curve"]["Equity"]
+                st.plotly_chart(go.Figure(go.Scatter(x=eq.index, y=eq, name="equity"))
+                                .update_layout(title="Equity", height=300, margin=dict(t=40, b=10)),
+                                width="stretch")
+                tr = stats["_trades"].rename(columns={"EntryTime": "entry_time", "ExitTime": "exit_time",
+                                                      "EntryPrice": "entry_price", "ExitPrice": "exit_price"})
+                st.plotly_chart(candles(df.iloc[-3000:], tr[tr["entry_time"] >= df.index[-3000:][0]],
+                                        f"{bt_symbol} {bt_tf} (last 3000 bars)"), width="stretch")
+                st.dataframe(tr.drop(columns=["Tag"], errors="ignore"), width="stretch")
             except Exception as e:
-                st.error(f"Backtest failed: {e}")
+                st.exception(e)
+
+# ---------------- Walk-forward ----------------
+with tab_wf:
+    st.caption("Optimise on a rolling training window, then trade the following unseen window with the chosen "
+               "parameters. Only out-of-sample results are shown; this is the honest estimate of performance.")
+    c1, c2, c3, c4 = st.columns(4)
+    wf_strategy = c1.selectbox("Strategy", list(STRATEGIES), key="wf-strat")
+    wf_symbol = c2.selectbox("Symbol", SYMBOLS, key="wf-sym")
+    wf_tf = c3.selectbox("Timeframe", INTERVALS, index=2, key="wf-tf")
+    wf_start = c4.date_input("Start", dt.date.today() - dt.timedelta(days=180), key="wf-start")
+    c1, c2, c3, c4 = st.columns(4)
+    train_days = c1.number_input("Train days", 7, 365, 30)
+    test_days = c2.number_input("Test days", 1, 90, 7)
+    min_trades = c3.number_input("Min trades in training", 1, 500, 10)
+    maximize = c4.selectbox("Optimise for", ["SQN", "Sharpe Ratio", "Return [%]", "Profit Factor"])
+    st.write("Grid:", STRATEGIES[wf_strategy].param_grid)
+
+    if st.button("Run walk-forward", type="primary"):
+        with st.spinner("Running walk-forward optimisation…"):
+            try:
+                df = klines(wf_symbol, wf_tf, wf_start, dt.date.today())
+                folds, eq = walk_forward(df, wf_strategy, int(train_days), int(test_days),
+                                         cfg=BacktestConfig(10_000, settings.fee_rate, settings.slippage_bps),
+                                         min_trades=int(min_trades), maximize=maximize)
+                if eq.empty:
+                    st.warning("Not enough data for a single fold.")
+                else:
+                    c1, c2, c3 = st.columns(3)
+                    c1.metric("Out-of-sample return", f"{(eq.iloc[-1] / eq.iloc[0] - 1) * 100:.2f}%")
+                    c2.metric("Max drawdown", f"{((eq / eq.cummax()) - 1).min() * 100:.2f}%")
+                    c3.metric("OOS trades", int(folds["test_trades"].sum()))
+                    st.plotly_chart(go.Figure(go.Scatter(x=eq.index, y=eq)).update_layout(
+                        title="Stitched out-of-sample equity", height=300), width="stretch")
+                    st.dataframe(folds, width="stretch", hide_index=True)
+            except Exception as e:
+                st.exception(e)

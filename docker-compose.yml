@@ -21,6 +21,7 @@ services:
   engine:
     build: .
     command: python src/main.py
+    restart: unless-stopped
     volumes:
       - .:/app
     depends_on:
@@ -28,6 +29,8 @@ services:
         condition: service_healthy
     env_file:
       - .env
+    environment:
+      POSTGRES_HOST: db  # .env uses localhost for running outside Docker
 
   # 3. The GUI (Frontend)
   dashboard:
@@ -42,3 +45,5 @@ services:
         condition: service_healthy
     env_file:
       - .env
+    environment:
+      POSTGRES_HOST: db  # .env uses localhost for running outside Docker

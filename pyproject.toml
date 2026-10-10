@@ -1,18 +1,29 @@
 [project]
 name = "binance-trading-bot"
 version = "0.1.0"
-description = "Add your description here"
+description = "Binance spot day-trading bot: official Binance SDK, shared backtest/live strategy engine, paper and live brokers"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "backtesting>=0.6.5",
-    "ccxt>=4.5.32",
+    "binance-sdk-spot>=13.1.0",
     "pandas>=2.3.3",
     "plotly>=6.5.1",
     "psycopg2-binary>=2.9.11",
+    "pyarrow>=22.0.0",
     "python-dotenv>=1.2.1",
-    "schedule>=1.2.2",
+    "requests>=2.34.2",
     "sqlalchemy>=2.0.45",
     "streamlit>=1.52.2",
     "watchdog>=6.0.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

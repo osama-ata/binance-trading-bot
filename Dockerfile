@@ -12,4 +12,6 @@ COPY pyproject.toml .
 # Install dependencies directly from pyproject.toml
 RUN pip install --no-cache-dir .
 
+ENV PYTHONUNBUFFERED=1
+
 COPY . .
