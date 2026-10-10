@@ -5,7 +5,7 @@ description = "Binance spot day-trading bot: official Binance SDK, shared backte
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "backtesting>=0.6.5",
+    "backtesting>=0.6.6",
     "binance-sdk-spot>=13.1.0",
     "pandas>=2.3.3",
     "plotly>=6.5.1",

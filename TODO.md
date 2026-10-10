@@ -5,7 +5,14 @@
 > Every item gives the **problem** (with file:line references to the code as of commit `1148706`), **what to do**, **acceptance criteria** and **sources**. Things that could not be verified are marked **[UNVERIFIED]**.
 > State at the time of writing: branch `main`, `uv run pytest -q`: 32 passed.
 >
-> **Progress log:** Phase 1 = sections 1, 5.1, 5.4, 4.1, 4.2 (DSR/PBO) and the `backtesting>=0.6.6` bump, pushed stage by stage. Stage 1 (section 1, fee hurdle) done; stage 2 (5.4, signal timeframe + Donchian ensemble) done; stage 3 (5.1, New York session time) done; stage 4 (4.1, look-ahead + warm-up checks) done; stage 5 (4.2, Deflated Sharpe + PBO, now columns in `scripts/wf_report.py`) done.
+> **Progress log:** Phase 1 = sections 1, 5.1, 5.4, 4.1, 4.2 (DSR/PBO) and the `backtesting>=0.6.6` bump, pushed stage by stage. Stages 1–5 done; stage 6 (bump + final walk-forward) done except 1 of 20 runs. Research runs are cached in `data/research/` and tables are committed in `reports/`. **Gate verdict: FAIL** (see section 1, "Phase 1 results").
+>
+> **Handoff (2026-10-11), to finish Phase 1 on another machine:**
+> 1. `git pull`, `uv sync`, `cp .env.example .env` (adjust). Optionally copy `data/` from the old machine: the klines plus the 19 cached runs. Cached runs only reuse if the code fingerprint matches (`1c08844fda07262b` = commit `3c85652`).
+> 2. Missing run: `uv run python scripts/wf_report.py --jobs 12 --out reports/phase1/final_bars.md`. Without the copied cache this recomputes all 20 runs (about 10–15 min on 16 cores); with it, only `donchian_ensemble` ETHUSDT 15m.
+> 3. Planned but not run: 5m execution with 1h signals for the other strategies: `uv run python scripts/wf_report.py --jobs 12 --intervals 5m --strategies ema_pullback,vwap_reversion,squeeze_breakout --set signal_tf=1h --out reports/phase1/final_5m_exec_1h_signals.md`.
+> 4. Update the results table and verdict in section 1 if these change anything, then commit and push.
+> 5. Proposed next (not yet approved): write each run's summary to a Postgres `research_runs` table as well (files stay the source for equity/folds), plus a dashboard Research tab.
 
 ---
 
@@ -119,7 +126,33 @@ Fees fell from ≈1.2R to ≈0.18R per trade, as predicted. But **gross** Avg R 
 - New tests show a signal is rejected when the stop is narrower than 4 × round-trip fees.
 - A break-even exit has PnL ≥ 0 after fees in both the backtest and the PaperBroker.
 - `summarize()` shows the fee and effective-risk metrics.
-- Re-run the walk-forward for all 4 strategies and record the before/after in this file. *(running; results recorded in the next commit)*
+- Re-run the walk-forward for all 4 strategies and record the before/after in this file. *(done; see "Phase 1 results" below and `reports/phase1/`)*
+
+**Phase 1 results: before/after walk-forward** (2026-04-01 → 2026-10-09, train 30d / test 7d, out-of-sample only; full tables in `reports/phase1/baseline.md`, `after_stage1.md` and `final_bars.md`):
+
+| Strategy · Symbol · Bars | Before Phase 1: OOS % (trades) | After Phase 1: OOS % (trades) | After: DSR / PBO |
+|---|---|---|---|
+| ema_pullback · BTC · 5m | −1.48 (15) | −1.03 (12) | 0.00 / 0.23 |
+| vwap_reversion · BTC · 5m | −0.09 (1) | 0.00 (0) | – / 0.80 |
+| squeeze_breakout · BTC · 5m | −3.21 (68) | −5.81 (96) | 0.00 / 0.06 |
+| opening_range · BTC · 5m | −6.60 (104) | −2.69 (30) | 0.00 / 0.61 |
+| ema_pullback · ETH · 5m | −0.98 (25) | −1.93 (26) | 0.00 / 0.35 |
+| squeeze_breakout · ETH · 5m | −10.18 (180) | −12.50 (191) | 0.00 / 0.59 |
+| opening_range · ETH · 5m | −0.42 (93) | **+0.96** (44) | 0.45 / 0.25 |
+| squeeze_breakout · BTC · 15m | −4.09 (75) | −7.39 (64) | 0.00 / 0.22 |
+| opening_range · BTC · 15m | −4.96 (92) | −2.30 (33) | 0.01 / 0.52 |
+| squeeze_breakout · ETH · 15m | −5.60 (94) | −5.43 (78) | 0.02 / 0.88 |
+| opening_range · ETH · 15m | −3.71 (97) | −1.56 (47) | 0.05 / 0.30 |
+| donchian_ensemble · BTC · 5m exec / 1h signals | (new) | +0.24 (16) | 0.05 / 0.69 |
+| donchian_ensemble · BTC · 15m exec / 1h signals | (new) | +0.36 (16) | 0.06 / 0.79 |
+| donchian_ensemble · ETH · 5m exec / 1h signals | (new) | −0.98 (15) | 0.07 / 0.61 |
+
+Buy & hold over the same windows was +4% to +35%. Caveats:
+- The baseline charged slippage twice (4 bps/side vs 2), so it is slightly pessimistic.
+- `vwap_reversion` now never trades: its VWAP targets are too close to clear the fee hurdle.
+- The opening-range rows changed for two reasons: the fee gates and the New York session time.
+
+**Gate verdict (Phase 1 → Phase 2): FAIL.** No strategy/symbol/timeframe reaches DSR > 0.95 with PBO < 0.5. The best is opening_range on ETH 5m: +0.96% OOS, DSR 0.45, PBO 0.25, so promising but not significant. Per the plan, **do not start Phase 2 (live hardening)**. Keep researching: Donchian/trend on slower bars (4h/1d signals), regime filters (5.5), and opening_range on more symbols and longer history.
 
 ---
 
@@ -475,7 +508,7 @@ These were verified in the installed backtesting.py 0.6.5 source.
   - `python-binance` 1.0.37 is maintained but there's no reason to switch.
   - `unicorn-binance-websocket-api` 2.16.1 (MIT) is a fallback if the SDK's websocket is flaky.
   - `cryptofeed` (AGPL, Python ≥3.13) is not a fit.
-- [ ] **Bump `backtesting>=0.6.6`.**
+- [x] **Bump `backtesting>=0.6.6`.** *(done in Phase 1 stage 6)*
 - [ ] **Indicators:** consider **TA-Lib 0.8.1** (BSD-2; pip wheels for cp311 on macOS, Linux and Windows) for live/backtest parity.
   - `talib.stream` is now a true incremental API: `stream.RSI(history)` returns a handle, `.update(bar)` is O(1), `.peek()` gives the forming bar, and `open_and_fill()` does both. Streamed values are documented as identical to batch values.
   - **Breaking change:** the old `talib.stream.X` functions that returned only the last value are gone. Watch `set_unstable_period` for EMA, RSI and ADX.
