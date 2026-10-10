@@ -35,7 +35,7 @@ class SqueezeBreakout(BaseStrategy):
             "trend": ta.ema(df["Close"], self.p["trend_ema"]),
         }
 
-    def entry(self, row: pd.Series, prev: pd.Series) -> str | None:
+    def entry(self, row: dict, prev: dict) -> str | None:
         if (
             row["recent_squeeze"] == 1.0
             and row["Close"] > row["bb_hi"]

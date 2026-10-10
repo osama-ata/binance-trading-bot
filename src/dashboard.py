@@ -10,7 +10,7 @@ from backtester import BacktestConfig, run_backtest, summarize, walk_forward
 from config import settings
 from data import load_klines
 from database import get_engine
-from strategies import STRATEGIES
+from strategies import STRATEGIES, BaseStrategy
 
 st.set_page_config(page_title="Crypto Commander", layout="wide")
 
@@ -52,12 +52,14 @@ def candles(df: pd.DataFrame, trades: pd.DataFrame | None = None, title: str = "
 def strategy_params(strategy: str, key: str) -> dict:
     cls = STRATEGIES[strategy]
     params = {}
-    defaults = {**cls.defaults}
+    defaults = {**BaseStrategy.defaults, **cls.defaults}
     cols = st.columns(4)
     for n, (name, default) in enumerate(defaults.items()):
         col = cols[n % 4]
-        if isinstance(default, bool) or isinstance(default, str):
-            params[name] = col.text_input(name, str(default), key=f"{key}-{name}")
+        if default is None or isinstance(default, (bool, str)):
+            text = col.text_input(name, "" if default is None else str(default), key=f"{key}-{name}",
+                                  help="empty = None" if default is None or name.endswith("_tf") else None)
+            params[name] = None if text.strip().lower() in ("", "none") else text.strip()
         elif isinstance(default, int):
             params[name] = col.number_input(name, value=default, step=1, key=f"{key}-{name}")
         else:
@@ -171,6 +173,8 @@ with tab_wf:
     test_days = c2.number_input("Test days", 1, 90, 7)
     min_trades = c3.number_input("Min trades in training", 1, 500, 10)
     maximize = c4.selectbox("Optimise for", ["SQN", "Sharpe Ratio", "Return [%]", "Profit Factor"])
+    wf_signal_tf = st.selectbox("Signal timeframe (execution stays on the bar timeframe)",
+                                ["strategy default", "bar timeframe", "15min", "1h", "4h"], key="wf-sigtf")
     st.write("Grid:", STRATEGIES[wf_strategy].param_grid)
 
     if st.button("Run walk-forward", type="primary"):
@@ -179,7 +183,9 @@ with tab_wf:
                 df = klines(wf_symbol, wf_tf, wf_start, dt.date.today())
                 folds, eq = walk_forward(df, wf_strategy, int(train_days), int(test_days),
                                          cfg=BacktestConfig(10_000, settings.fee_rate, settings.slippage_bps),
-                                         min_trades=int(min_trades), maximize=maximize)
+                                         min_trades=int(min_trades), maximize=maximize,
+                                         params={} if wf_signal_tf == "strategy default" else
+                                         {"signal_tf": None if wf_signal_tf == "bar timeframe" else wf_signal_tf})
                 if eq.empty:
                     st.warning("Not enough data for a single fold.")
                 else:

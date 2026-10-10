@@ -42,6 +42,8 @@ class Settings:
     cooldown_bars: int = int(os.getenv("COOLDOWN_BARS", "12"))
     # Time stop in bars; empty = use the strategy's own default
     max_bars_in_trade: int | None = int(os.environ["MAX_BARS_IN_TRADE"]) if os.getenv("MAX_BARS_IN_TRADE") else None
+    # Evaluate signals on a slower timeframe (e.g. 15min, 1h) while executing on INTERVAL; empty = strategy default
+    signal_tf: str | None = os.getenv("SIGNAL_TF", "").strip() or None
 
     # Database
     pg_user: str = os.getenv("POSTGRES_USER", "postgres")

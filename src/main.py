@@ -53,6 +53,8 @@ def build_engine() -> TradingEngine:
         broker = PaperBroker(store, settings.paper_cash, settings.fee_rate, settings.slippage_bps, client=client)
 
     overrides = {"max_bars": settings.max_bars_in_trade} if settings.max_bars_in_trade else {}
+    if settings.signal_tf:
+        overrides["signal_tf"] = None if settings.signal_tf.lower() == "none" else settings.signal_tf
     strategy = STRATEGIES[settings.strategy](fee_rate=settings.fee_rate, **overrides)
     log.info("Starting %s | strategy=%s %s | symbols=%s | interval=%s",
              mode, strategy.name, strategy.p, settings.symbols, settings.interval)

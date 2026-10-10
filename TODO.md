@@ -5,7 +5,7 @@
 > Every item gives the **problem** (with file:line references to the code as of commit `1148706`), **what to do**, **acceptance criteria** and **sources**. Things that could not be verified are marked **[UNVERIFIED]**.
 > State at the time of writing: branch `main`, `uv run pytest -q`: 32 passed.
 >
-> **Progress log:** Phase 1 = sections 1, 5.1, 5.4, 4.1, 4.2 (DSR/PBO) and the `backtesting>=0.6.6` bump, pushed stage by stage. Stage 1 (section 1, fee hurdle) done; 41 tests pass.
+> **Progress log:** Phase 1 = sections 1, 5.1, 5.4, 4.1, 4.2 (DSR/PBO) and the `backtesting>=0.6.6` bump, pushed stage by stage. Stage 1 (section 1, fee hurdle) done; stage 2 (5.4, signal timeframe + Donchian ensemble) done; 52 tests pass.
 
 ---
 
@@ -392,10 +392,17 @@ These were verified in the installed backtesting.py 0.6.5 source.
   - Evidence: weak to moderate (practitioner work, popular but survivorship-biased).
   - **Do not port NFI's DCA / "grinding" or its −99% stoploss.**
   - NFI context: 5m bars, 40–80 volume-ranked pairs, 6–12 open trades, deep dip-buys (e.g. EMA26 − EMA12 > 3.4% of price and close < 0.999 × lower BB), a liquidity check on zero-volume candles in the last 288 bars, and a BTC 4h informative timeframe. Repo: [iterativv/NostalgiaForInfinity](https://github.com/iterativv/NostalgiaForInfinity).
-- [ ] **5.4 Slower signal timeframe.**
+- [x] **5.4 Slower signal timeframe.** *(done in Phase 1 stage 2, except vol-targeted sizing, which is 3.5)*
   - Test 15m or 1h signals with 5m execution: run strategies on `resample_ohlcv` output and keep the engine on 5m.
   - Slower trend following has the best net-of-cost crypto evidence: an ensemble of Donchian channels with vol-targeted sizing, net Sharpe > 1.5, but on daily or multi-hour bars ([Zarattini, Pagani & Barbon, SFI RP 25-80](https://ideas.repec.org/p/chf/rpseri/rp2580.html)).
   - Consider adding a Donchian-ensemble trend strategy.
+  - **Done:**
+    - New `signal_tf` param on every strategy (env `SIGNAL_TF`, dashboard walk-forward selector, `wf_report.py --set signal_tf=1h`). `prepare()` resamples to `signal_tf`, computes indicators there, and forward-fills only *closed* signal bars onto the execution bars via `indicators.align_higher_tf()`. `prev:<col>` columns carry the previous signal bar; `signal_bar` marks the execution bars that close one. Entries and discretionary exits fire only on those bars; stops, targets, break-even and the time stop still run on every execution bar.
+    - New `donchian_ensemble` strategy (1h signals by default): 5 Donchian breakout components (24–384 signal bars), long when ≥ `entry_threshold` of them are long, exit when the share falls to `exit_threshold`, wide 3×ATR stop.
+    - Timeframe strings are normalised (`15m` → `15min`, `1d` → `1D`); pandas reads `15m` as *months*.
+    - Speed-up: strategy rows are converted to dicts once per frame instead of building a pandas Series per bar (tests 9.4 s → 3.2 s; a 6-month 5m walk-forward ≈ 2 min). `scripts/wf_report.py` now runs jobs in parallel processes (`--jobs`).
+    - Tests: no look-ahead with `signal_tf` = 15min/1h (cuts inside forming bars), signals only on signal-bar closes, aligned values equal the resampled bar.
+  - **Results:** see the Phase 1 results table in section 1 (recorded once the runs finish).
 - [ ] **5.5 Regime routing with simple deterministic measures:** Kaufman Efficiency Ratio, Choppiness Index and realized-volatility percentile on 1h.
   - Run VWAP mean-reversion and EMA pullback only when ER(1h) is low and volatility is mid-range.
   - Run squeeze and opening range only when ER is rising, during 13–16 UTC.

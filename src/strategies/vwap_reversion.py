@@ -35,7 +35,7 @@ class VwapReversion(BaseStrategy):
             "adx": ta.adx(df, 14),
         }
 
-    def entry(self, row: pd.Series, prev: pd.Series) -> str | None:
+    def entry(self, row: dict, prev: dict) -> str | None:
         if (
             row["Close"] < row["vwap_lower"]
             and row["rsi"] <= self.p["rsi_max"]
@@ -45,8 +45,8 @@ class VwapReversion(BaseStrategy):
             return f"vwap stretch {100 * (row['Close'] / row['vwap'] - 1):.2f}%, rsi {row['rsi']:.0f}"
         return None
 
-    def target_for(self, row: pd.Series, stop: float) -> float:
+    def target_for(self, row: dict, stop: float) -> float:
         return row["vwap"]
 
-    def exit(self, row: pd.Series) -> str | None:
+    def exit(self, row: dict) -> str | None:
         return "closed above vwap" if row["Close"] >= row["vwap"] else None

@@ -12,6 +12,7 @@ LOOSE = {
     "vwap_reversion": {"band_k": 1.0, "rsi_max": 50, "adx_max": 100},
     "squeeze_breakout": {},
     "opening_range": {},
+    "donchian_ensemble": {"lookbacks": "12,24,48", "signal_tf": "15min"},
 }
 
 
@@ -52,3 +53,36 @@ def test_higher_tf_uses_only_closed_bars(ohlcv):
 def test_rsi_bounds(ohlcv):
     r = ta.rsi(ohlcv["Close"]).dropna()
     assert r.between(0, 100).all()
+
+
+@pytest.mark.parametrize("name", ["squeeze_breakout", "ema_pullback", "vwap_reversion"])
+@pytest.mark.parametrize("signal_tf", ["15min", "1h"])
+def test_signal_timeframe_has_no_lookahead_and_fires_only_on_its_closes(name, signal_tf, ohlcv):
+    strat = STRATEGIES[name](signal_tf=signal_tf, **{k: v for k, v in LOOSE[name].items() if k != "signal_tf"})
+    full = strat.prepare(ohlcv)
+    for cut in (1501, 2777, 3999):  # cuts in the middle of a forming 15m / 1h bar
+        part = strat.prepare(ohlcv.iloc[:cut])
+        pd.testing.assert_frame_equal(part, full.iloc[:cut], check_freq=False, rtol=1e-9, atol=1e-6)
+    period = pd.Timedelta(signal_tf)
+    closes = full.index[full["signal_bar"]] + (ohlcv.index[1] - ohlcv.index[0])
+    assert ((closes - closes.normalize()) % period == pd.Timedelta(0)).all()
+    signal_rows = [i for i in range(len(full)) if strat.entry_signal(full, i)]
+    assert all(full["signal_bar"].iloc[i] for i in signal_rows)
+
+
+def test_signal_timeframe_values_match_resampled_bars(ohlcv):
+    strat = STRATEGIES["squeeze_breakout"](signal_tf="1h")
+    ind = strat.prepare(ohlcv)
+    hourly = ohlcv.resample("1h").agg({"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"})
+    # The 5m bar opening at 01:55 closes the 01:00-02:00 hourly bar and must carry exactly its OHLCV
+    row = ind.loc["2026-01-01 01:55"]
+    assert row["signal_bar"]
+    for c in ("Open", "High", "Low", "Close", "Volume"):
+        assert row[c] == pytest.approx(hourly.loc["2026-01-01 01:00", c])
+    assert row["prev:Close"] == pytest.approx(hourly.loc["2026-01-01 00:00", "Close"])
+    assert not ind.loc["2026-01-01 02:00", "signal_bar"]
+
+
+def test_binance_style_timeframes_are_normalised():
+    s = STRATEGIES["ema_pullback"](signal_tf="15m", atr_tf="1d")
+    assert s.p["signal_tf"] == "15min" and s.p["atr_tf"] == "1D" and s.p["htf"] == "1h"

@@ -50,10 +50,10 @@ class OpeningRangeBreakout(BaseStrategy):
             ),
         }
 
-    def entry(self, row: pd.Series, prev: pd.Series) -> str | None:
+    def entry(self, row: dict, prev: dict) -> str | None:
         if row["or_first_break"] == 1.0:
             return f"opening range breakout above {row['or_high']:.2f}"
         return None
 
-    def stop_for(self, row: pd.Series) -> float:
+    def stop_for(self, row: dict) -> float:
         return max(row["or_low"], row["Close"] - self.p["max_stop_atr"] * row["atr"])

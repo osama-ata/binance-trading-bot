@@ -175,19 +175,21 @@ def summarize(stats: pd.Series) -> dict[str, float]:
 def walk_forward(
     df: pd.DataFrame, strategy: str, train_days: int = 30, test_days: int = 7,
     grid: dict[str, list] | None = None, cfg: BacktestConfig | None = None,
-    min_trades: int = 10, maximize: str = "SQN",
+    min_trades: int = 10, maximize: str = "SQN", params: dict | None = None,
 ) -> tuple[pd.DataFrame, pd.Series]:
     """Rolling walk-forward: optimise on `train_days`, then trade the next `test_days` with the chosen params.
 
+    `params` are fixed overrides applied in every fold (e.g. {"signal_tf": "1h"}); `grid` is what's optimised.
     Returns (per-fold table, stitched out-of-sample equity curve). Only the test windows count.
     """
+    params = params or {}
     cls = STRATEGIES[strategy]
     cfg = cfg or BacktestConfig()
     grid = grid or cls.param_grid
     if not grid:
         raise ValueError(f"{strategy} has no param_grid")
     bar = df.index[1] - df.index[0]
-    warmup = cls().warmup_bars(bar) * bar
+    warmup = cls(**params).warmup_bars(bar) * bar
     start = df.index[0] + warmup
     folds, equity_parts = [], []
     capital = cfg.cash
@@ -198,7 +200,7 @@ def walk_forward(
         if test_end > df.index[-1] + bar:
             break
         train = df[(df.index >= train_start - warmup) & (df.index < train_end)]
-        adapter = _make_adapter(cls, train, {}, cfg, trade_from=train_start)
+        adapter = _make_adapter(cls, train, params, cfg, trade_from=train_start)
         bt = _bt(train, adapter, cfg)
 
         with warnings.catch_warnings():
@@ -211,7 +213,7 @@ def walk_forward(
 
         test = df[(df.index >= train_end - warmup) & (df.index < test_end)]
         stats, _ = run_backtest(
-            test, cls, best_params,
+            test, cls, {**params, **best_params},
             BacktestConfig(capital, cfg.commission, cfg.slippage_bps, cfg.risk_kwargs), trade_from=train_end,
         )
         eq = stats["_equity_curve"]["Equity"]

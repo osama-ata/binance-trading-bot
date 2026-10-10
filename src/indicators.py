@@ -3,6 +3,18 @@ import numpy as np
 import pandas as pd
 
 
+def normalize_tf(tf: str | None) -> str | None:
+    """Binance-style timeframe ("15m", "1h", "1d") -> pandas offset ("15min", "1h", "1D")."""
+    if not tf:
+        return None
+    tf = str(tf).strip()
+    if tf.endswith("m") and tf[:-1].isdigit():
+        return tf[:-1] + "min"
+    if tf.endswith("d") and tf[:-1].isdigit():
+        return tf[:-1] + "D"
+    return tf
+
+
 def ema(s: pd.Series, n: int) -> pd.Series:
     return s.ewm(span=n, adjust=False, min_periods=n).mean()
 
@@ -88,3 +100,28 @@ def higher_tf(df: pd.DataFrame, rule: str, series_fn) -> pd.Series:
     base_close_times = df.index + (df.index[1] - df.index[0] if len(df) > 1 else pd.Timedelta(0))
     aligned = values.reindex(values.index.union(base_close_times)).ffill()
     return pd.Series(aligned.reindex(base_close_times).to_numpy(), index=df.index)
+
+
+def align_higher_tf(df: pd.DataFrame, rule: str, frame_fn) -> tuple[pd.DataFrame, pd.Series]:
+    """Run `frame_fn` on `df` resampled to `rule` (indexed by bar *open* time, like df) and forward-fill the
+    resulting columns onto df's bars using only *closed* higher-timeframe bars.
+
+    Returns (aligned frame indexed like df, boolean Series that is True on the base bars that complete a
+    higher-timeframe bar, i.e. where a fresh value appears).
+    """
+    if len(df) < 2:
+        empty = frame_fn(df.iloc[0:0])
+        return empty.reindex(df.index), pd.Series(False, index=df.index)
+    base_period = df.index[1] - df.index[0]
+    period = pd.Timedelta(rule)
+    htf = df.resample(rule, label="left", closed="left").agg(
+        {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+    ).dropna(subset=["Close"])
+    frame = frame_fn(htf)
+    frame.index = frame.index + period  # label by close time
+    frame = frame[frame.index <= df.index[-1] + base_period]  # drop the still-forming bucket
+    base_close = df.index + base_period
+    aligned = frame.reindex(frame.index.union(base_close)).ffill().reindex(base_close)
+    aligned.index = df.index
+    is_close = pd.Series(base_close.isin(frame.index), index=df.index)
+    return aligned, is_close

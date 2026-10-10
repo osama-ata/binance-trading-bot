@@ -52,7 +52,7 @@ class EmaPullback(BaseStrategy):
             ),
         }
 
-    def entry(self, row: pd.Series, prev: pd.Series) -> str | None:
+    def entry(self, row: dict, prev: dict) -> str | None:
         if (
             row["htf_trend"] == 1.0
             and row["slow_slope"] > 0
