@@ -11,7 +11,8 @@ A Binance spot day-trading bot built on **Binance's official Python SDK** (`bina
   - `ema_pullback`: pullback in an uptrend, with a higher-timeframe trend filter and ADX
   - `vwap_reversion`: mean reversion to the daily VWAP in a low-ADX range
   - `squeeze_breakout`: Bollinger-inside-Keltner squeeze, then a volume breakout
-  - `opening_range`: opening-range breakout around a session open (default 13:30 UTC)
+  - `opening_range`: opening-range breakout around a session open (default 09:30 New York time, DST-aware)
+  - `donchian_ensemble`: trend following with an ensemble of Donchian-channel breakouts on 1h signals
 - **Risk management** (`src/risk.py`), the same in backtest and live:
   - Fixed-fraction position sizing from the stop distance, capped by notional
   - Break-even stop and time stop

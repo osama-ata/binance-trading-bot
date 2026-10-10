@@ -5,7 +5,7 @@
 > Every item gives the **problem** (with file:line references to the code as of commit `1148706`), **what to do**, **acceptance criteria** and **sources**. Things that could not be verified are marked **[UNVERIFIED]**.
 > State at the time of writing: branch `main`, `uv run pytest -q`: 32 passed.
 >
-> **Progress log:** Phase 1 = sections 1, 5.1, 5.4, 4.1, 4.2 (DSR/PBO) and the `backtesting>=0.6.6` bump, pushed stage by stage. Stage 1 (section 1, fee hurdle) done; stage 2 (5.4, signal timeframe + Donchian ensemble) done; 52 tests pass.
+> **Progress log:** Phase 1 = sections 1, 5.1, 5.4, 4.1, 4.2 (DSR/PBO) and the `backtesting>=0.6.6` bump, pushed stage by stage. Stage 1 (section 1, fee hurdle) done; stage 2 (5.4, signal timeframe + Donchian ensemble) done; stage 3 (5.1, New York session time) done; 55 tests pass.
 
 ---
 
@@ -380,7 +380,7 @@ These were verified in the installed backtesting.py 0.6.5 source.
 
 ## 5. P2: strategies (`src/strategies/`)
 
-- [ ] **5.1 Make the opening range follow New York time.**
+- [x] **5.1 Make the opening range follow New York time.** *(done in Phase 1 stage 3: `session_open="09:30"` + `session_tz="America/New_York"` converted per local day, so DST is handled; `session_tz="UTC"` keeps a fixed UTC open. Tests cover January (14:30 UTC), July (13:30 UTC) and the UTC override.)*
   - `OpeningRangeBreakout` hard-codes `"session_open": "13:30"` UTC (`src/strategies/opening_range.py:16`). That is the NYSE open only during US daylight time (EDT). In winter (EST) the open is **14:30 UTC**.
   - Fix: compute the open per day with `zoneinfo.ZoneInfo("America/New_York")` at 09:30 local, then convert to UTC. Keep a UTC override option.
   - Evidence (strong, descriptive): 13:00–21:59 UTC carried 50.6% of BTC daily variance in 2022–25, up from 38.4%. The peak shifts with US daylight saving. Weekend volatility is about 0.6× weekdays ([CryptoSlate summary of an MDPI study](https://cryptoslate.com/crypto-never-closes-but-bitcoin-ethereum-xrp-and-solana-now-move-on-wall-street-time/)).

@@ -86,3 +86,27 @@ def test_signal_timeframe_values_match_resampled_bars(ohlcv):
 def test_binance_style_timeframes_are_normalised():
     s = STRATEGIES["ema_pullback"](signal_tf="15m", atr_tf="1d")
     assert s.p["signal_tf"] == "15min" and s.p["atr_tf"] == "1D" and s.p["htf"] == "1h"
+
+
+def _orb_range_start(ohlcv_like, **params):
+    s = STRATEGIES["opening_range"](atr_tf=None, **params)
+    ind = s.prepare(ohlcv_like)
+    first_valid = ind["or_high"].dropna().index[0]
+    return first_valid + (ohlcv_like.index[1] - ohlcv_like.index[0])  # close time of first bar after the range
+
+
+@pytest.mark.parametrize("start, expected_open_utc", [
+    ("2026-01-05", "14:30"),  # EST (winter): 09:30 New York = 14:30 UTC
+    ("2026-07-06", "13:30"),  # EDT (summer): 09:30 New York = 13:30 UTC
+])
+def test_opening_range_follows_new_york_time(ohlcv, start, expected_open_utc):
+    df = ohlcv.copy()
+    df.index = pd.date_range(start, periods=len(df), freq="5min", tz="UTC")
+    complete = _orb_range_start(df, range_minutes=30)
+    hh, mm = map(int, expected_open_utc.split(":"))
+    assert complete == pd.Timestamp(start, tz="UTC") + pd.Timedelta(hours=hh, minutes=mm + 30 + 5)
+
+
+def test_opening_range_utc_override(ohlcv):
+    complete = _orb_range_start(ohlcv, session_tz="UTC", session_open="13:30", range_minutes=30)
+    assert complete == pd.Timestamp("2026-01-01 14:05", tz="UTC")
