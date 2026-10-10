@@ -29,9 +29,9 @@ class EmaPullback(BaseStrategy):
     param_grid = {"rsi_low": [35, 40, 45], "stop_atr": [2.0, 2.5, 3.0], "rr": [1.5, 2.0, 3.0]}
 
     def indicator_warmup(self, bar: pd.Timedelta) -> int:
-        # The HTF slow EMA needs ~htf_slow higher-timeframe bars (x1.5 so the EMA has converged)
+        # The HTF slow EMA must converge (to 0.1%) on higher-timeframe bars: ~3.5 x (htf_slow + 1) of them
         htf_ratio = max(1, int(pd.Timedelta(self.p["htf"]) / bar))
-        return max(250, int(1.5 * self.p["htf_slow"] * htf_ratio))
+        return max(250, (ta.ewm_warmup(2 / (self.p["htf_slow"] + 1)) + 1) * htf_ratio)
 
     def indicators(self, df: pd.DataFrame) -> dict[str, pd.Series]:
         close = df["Close"]

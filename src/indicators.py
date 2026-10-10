@@ -15,6 +15,12 @@ def normalize_tf(tf: str | None) -> str | None:
     return tf
 
 
+def ewm_warmup(alpha: float, tol: float = 1e-3) -> int:
+    """Bars until an exponentially smoothed series has forgotten its seed to within `tol`:
+    (1 - alpha)^k <= tol. EMA(span n): alpha = 2/(n+1) -> ~3.5(n+1); Wilder(n): alpha = 1/n -> ~6.9n."""
+    return int(np.ceil(np.log(tol) / np.log(1 - alpha)))
+
+
 def ema(s: pd.Series, n: int) -> pd.Series:
     return s.ewm(span=n, adjust=False, min_periods=n).mean()
 

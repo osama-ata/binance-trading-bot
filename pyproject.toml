@@ -27,3 +27,4 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = ["slow: long-running validity checks (deselect with -m 'not slow')"]

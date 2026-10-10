@@ -67,7 +67,8 @@ class BaseStrategy:
         """Bars of history (of size `bar`) needed before all indicators are valid."""
         sig = self._ratio(bar, self.p["signal_tf"])
         atr = self._ratio(bar, self.p["atr_tf"])
-        return max(self.indicator_warmup(bar * sig) * sig + sig, int(1.5 * self.p["atr_n"] * atr) + atr)
+        atr_bars = ta.ewm_warmup(1 / self.p["atr_n"]) + self.p["atr_n"]  # Wilder ATR on the atr_tf bars
+        return max(self.indicator_warmup(bar * sig) * sig + sig, atr_bars * atr + atr)
 
     @staticmethod
     def _ratio(bar: pd.Timedelta, tf: str | None) -> int:

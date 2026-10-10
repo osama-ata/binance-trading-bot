@@ -5,7 +5,7 @@
 > Every item gives the **problem** (with file:line references to the code as of commit `1148706`), **what to do**, **acceptance criteria** and **sources**. Things that could not be verified are marked **[UNVERIFIED]**.
 > State at the time of writing: branch `main`, `uv run pytest -q`: 32 passed.
 >
-> **Progress log:** Phase 1 = sections 1, 5.1, 5.4, 4.1, 4.2 (DSR/PBO) and the `backtesting>=0.6.6` bump, pushed stage by stage. Stage 1 (section 1, fee hurdle) done; stage 2 (5.4, signal timeframe + Donchian ensemble) done; stage 3 (5.1, New York session time) done; 55 tests pass.
+> **Progress log:** Phase 1 = sections 1, 5.1, 5.4, 4.1, 4.2 (DSR/PBO) and the `backtesting>=0.6.6` bump, pushed stage by stage. Stage 1 (section 1, fee hurdle) done; stage 2 (5.4, signal timeframe + Donchian ensemble) done; stage 3 (5.1, New York session time) done; stage 4 (4.1, look-ahead + warm-up checks) done.
 
 ---
 
@@ -319,14 +319,22 @@ These were verified in the installed backtesting.py 0.6.5 source.
 
 ### 4.1 Look-ahead and warm-up tests (P0-B, ~1 day)
 
-- [ ] **`tests/test_lookahead.py`:** for each strategy, pick about 200 cut points `t`, including every signal bar and bars in the middle of an unfinished 1h candle.
+- [x] **`tests/test_lookahead.py`:** for each strategy, pick about 200 cut points `t`, including every signal bar and bars in the middle of an unfinished 1h candle. *(done in Phase 1 stage 4: `src/validation.py` `lookahead_check` + `default_cuts`; `tests/test_lookahead.py` runs 200 cuts per strategy and per signal-timeframe variant, plus a test that a planted centred-window leak is caught.)*
   - Assert `strategy.prepare(df.loc[:t]).iloc[-1]` ≈ `strategy.prepare(df).loc[t]` (`np.isclose`, rtol 1e-9; both start at the same first bar, so the recursive EMAs match exactly).
   - Also assert `entry_signal` gives the same result.
   - This catches leaks in `higher_tf`, `session_vwap`, `resample_ohlcv`, the opening-range groupby, and any `shift(-1)`, `bfill` or centered window.
   - Freqtrade's version: [lookahead.py](https://github.com/freqtrade/freqtrade/blob/develop/freqtrade/optimize/analysis/lookahead.py), [docs](https://www.freqtrade.io/en/stable/lookahead-analysis/). It runs truncated backtests ending one candle after each entry or exit and compares the signal and indicator columns with no tolerance.
-- [ ] **`tests/test_recursive.py`** (Freqtrade `recursive-analysis`, [docs](https://www.freqtrade.io/en/stable/recursive-analysis/)): compute indicators with N bars of history before an evaluation point (N = 20, 40, 80, 150, 300, 999 …) and report the % difference of the last value against full history.
+- [x] **`tests/test_recursive.py`** *(done in Phase 1 stage 4 as `validation.recursive_check`, tested in `tests/test_lookahead.py`; tests marked `slow`, skip with `-m "not slow"`)* (Freqtrade `recursive-analysis`, [docs](https://www.freqtrade.io/en/stable/recursive-analysis/)): compute indicators with N bars of history before an evaluation point (N = 20, 40, 80, 150, 300, 999 …) and report the % difference of the last value against full history.
   - Use it to verify each strategy's `warmup_bars(bar)` is large enough that the live engine (`keep_bars`, `src/engine.py:27`) matches the backtest within e.g. 0.1%.
   - EMA200 on 1h inside `ema_pullback` is the riskiest.
+
+**Stage 4 results.** Run on real data with `uv run python src/validation.py BTCUSDT 5m 2026-06-01` (60 cuts per strategy, 10 evaluation points):
+
+- **No look-ahead** in any strategy (0 mismatches on real data and on the synthetic fixture, including 15min/1h signal timeframes).
+- **Two warm-up bugs found and fixed:**
+  1. Warm-ups used fixed multiples (`1.5 × atr_n` 1h bars for the stop ATR, `1.5 × htf_slow` for EMA200-on-1h). Wilder ATR needs ≈6.9·n bars and an EMA ≈3.5·(n+1) bars to forget their seed to 0.1%, so the live engine's stop ATR differed from the backtest by ≈5%. New `indicators.ewm_warmup(alpha, tol)` now derives the warm-ups: the base class covers the 1h ATR (1,308 5m bars ≈ 4.5 days), and `ema_pullback` needs 8,305 5m bars ≈ 29 days.
+  2. `donchian_ensemble` component states were path-dependent: a component stayed long from a breakout until an exit, however long ago, so live and backtest could disagree indefinitely (50% score difference at the old warm-up). Components now look only at channel events within their own lookback, and the warm-up is 2 × the longest lookback (9,252 5m bars ≈ 32 days).
+- **Max indicator difference with the live engine's history** (`warmup_bars + 50`) vs full history, after the fixes: ema_pullback 0.0%, vwap_reversion / squeeze_breakout / opening_range 0.03%, donchian_ensemble 0.0%. With only 300 bars it was 17.6% (vwap/squeeze/orb), and 100% for ema_pullback/donchian.
 
 ### 4.2 Overfitting statistics on the walk-forward results (P1)
 
