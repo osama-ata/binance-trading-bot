@@ -428,7 +428,7 @@ These come from Binance's spot API docs and changelog (`binance/binance-spot-api
   - Add `max_portfolio_risk` (e.g. 0.75% of equity) as the sum of open `qty × (entry − stop)`. Alternatively scale the second position by `1/√(1+ρ)`.
   - `can_open` (`src/risk.py:96`) currently only counts positions.
 - [ ] **3.4 Drawdown de-risking.** Halve `risk_per_trade` at −5% from peak equity and pause entries at −10%. This is sensible capital preservation, with weak evidence that it adds return. Equity-curve trading (stop when equity is below its moving average) has weak and mixed evidence, so skip it.
-- [ ] **3.5 Volatility-targeted sizing** within the existing caps: scale risk so per-trade notional volatility is constant. It stabilizes risk but does not reliably add return ([Cederburg et al. 2020, JFE](https://www.lehigh.edu/~xuy219/research/COWY.pdf); Harvey et al. 2018).
+- [x] **3.5 Volatility-targeted sizing** *(done in Phase 1b stage 2: `vol_target` / `vol_lookback`)* within the existing caps: scale risk so per-trade notional volatility is constant. It stabilizes risk but does not reliably add return ([Cederburg et al. 2020, JFE](https://www.lehigh.edu/~xuy219/research/COWY.pdf); Harvey et al. 2018).
 - [ ] **3.6 Decaying target (ROI table):** Freqtrade-style `minimal_roi = {"0": x, "40": 0.0}` (minutes since entry → required profit), as an optional complement to `max_bars`.
 - **Defer:** fractional Kelly (needs hundreds of live trades; cap at 0.25 Kelly if ever used), and riskfolio-lib / skfolio portfolio optimization (overkill for 2 symbols).
 
@@ -526,7 +526,7 @@ These were verified in the installed backtesting.py 0.6.5 source.
   - Fix: compute the open per day with `zoneinfo.ZoneInfo("America/New_York")` at 09:30 local, then convert to UTC. Keep a UTC override option.
   - Evidence (strong, descriptive): 13:00–21:59 UTC carried 50.6% of BTC daily variance in 2022–25, up from 38.4%. The peak shifts with US daylight saving. Weekend volatility is about 0.6× weekdays ([CryptoSlate summary of an MDPI study](https://cryptoslate.com/crypto-never-closes-but-bitcoin-ethereum-xrp-and-solana-now-move-on-wall-street-time/)).
   - **No peer-reviewed crypto opening-range study was found**, so the opening-range edge itself has weak evidence.
-- [ ] **5.2 Time-of-day volatility gate:** restrict breakout strategies (squeeze, opening range) to about 13:00–17:00 UTC, when the 5m range is about 2× overnight. Hour-of-day *return* anomalies are **not persistent** (Baur et al., SSRN 3088472; [Quantpedia](https://quantpedia.com/are-there-seasonal-intraday-or-overnight-anomalies-in-bitcoin/); [Concretum](https://concretumgroup.com/seasonality-in-bitcoin-intraday-trend-trading/) reports gross of costs). Use hours as **volatility filters only**.
+- [x] **5.2 Time-of-day volatility gate:** *(done in Phase 1b stage 4: `trade_hours`; doesn't rescue the breakouts)* restrict breakout strategies (squeeze, opening range) to about 13:00–17:00 UTC, when the 5m range is about 2× overnight. Hour-of-day *return* anomalies are **not persistent** (Baur et al., SSRN 3088472; [Quantpedia](https://quantpedia.com/are-there-seasonal-intraday-or-overnight-anomalies-in-bitcoin/); [Concretum](https://concretumgroup.com/seasonality-in-bitcoin-intraday-trend-trading/) reports gross of costs). Use hours as **volatility filters only**.
 - [ ] **5.3 Multi-timeframe crash veto for the dip strategies** (`vwap_reversion`, `ema_pullback`), from NostalgiaForInfinity (GPL-3.0, re-implement only):
   - Skip entries when RSI(3) is crashing on several timeframes at once, e.g. `RSI3_5m < 3 and RSI3_15m < 5 and RSI3_1h < 15`.
   - Skip after a large daily move or a big upper wick.
@@ -544,7 +544,7 @@ These were verified in the installed backtesting.py 0.6.5 source.
     - Speed-up: strategy rows are converted to dicts once per frame instead of building a pandas Series per bar (tests 9.4 s → 3.2 s; a 6-month 5m walk-forward ≈ 2 min). `scripts/wf_report.py` now runs jobs in parallel processes (`--jobs`).
     - Tests: no look-ahead with `signal_tf` = 15min/1h (cuts inside forming bars), signals only on signal-bar closes, aligned values equal the resampled bar.
   - **Results:** see the Phase 1 results tables in section 1. 1h signals reduce losses but nothing passes the gate.
-- [ ] **5.5 Regime routing with simple deterministic measures:** Kaufman Efficiency Ratio, Choppiness Index and realized-volatility percentile on 1h.
+- [x] **5.5 Regime routing with simple deterministic measures:** *(done in Phase 1b stage 4: ER / Choppiness / vol-percentile filters; no strategy turns positive)* Kaufman Efficiency Ratio, Choppiness Index and realized-volatility percentile on 1h.
   - Run VWAP mean-reversion and EMA pullback only when ER(1h) is low and volatility is mid-range.
   - Run squeeze and opening range only when ER is rising, during 13–16 UTC.
   - Skip when 1h realized vol is below about the 20th percentile (targets can't clear fees) or above about the 95th (crash risk).
