@@ -10,7 +10,11 @@
 > **Handoff (2026-10-11): Phase 1 finished on the Mac Studio.** Work continues there (`~/coding/binance-trading-bot`, 20 cores, use `--jobs 16`).
 > - The missing `donchian_ensemble` ETHUSDT 15m run and the 5m-exec / 1h-signal comparison (`reports/phase1/final_5m_exec_1h_signals.md`) are done. Neither changes the verdict (still **FAIL**).
 > - The Docker stack runs again: the Dockerfile now installs from `uv.lock` (`pip install .` failed with no build backend and no README in the build context). The compose db's host port is `${POSTGRES_PORT:-5432}`; on the Studio, 5432 belongs to another project, so `.env` sets `POSTGRES_PORT=5433`.
-> - **Phase 1b (approved 2026-10-11), in progress:** (1) longer history, (2) Donchian on 4h/1d signals with vol-targeted sizing, (3) opening_range on more symbols and longer history, (4) regime and time-of-day filters, (5) a Postgres `research_runs` table plus a dashboard Research tab. See "Phase 1b" under section 1.
+> - **Phase 1b (2026-10-11): done, gate still FAIL.** It covered longer history, Donchian on 4h/1d signals with vol-targeted sizing, opening_range on 4 symbols since 2022, regime/time-of-day filters, and the `research_runs` table plus the dashboard Research tab. See "Phase 1b" under section 1.
+>   - The only lead is **Donchian on 4h signals** (ETH OOS Sharpe 0.66–0.68 vs B&H 0.26, DSR 0.83–0.88, but PBO 0.65–0.88).
+>   - Every 5m strategy loses over 2022–2026, with or without filters. opening_range is dropped.
+>   - **Proposed next (not yet approved):** make the 4h Donchian robust: a reduced or fixed grid (to bring PBO down), SOL/BNB and a BTC+ETH(+SOL) portfolio, then re-run the gate.
+>   - Long 5m runs take about 2h each, beyond the 2h background-task limit: start them with `nohup ... &` and poll. Cached runs make reruns resume.
 
 ---
 
@@ -210,7 +214,35 @@ Slower signals cut trade counts by 4–7× and most of the fee bleed, but nothin
   | BNB | −21.04 | +96.47 | −22.48 | 431 | −1.76 | 0.52 | 0.00 | 0.76 |
 
   - **Verdict: drop opening_range.** The Phase 1 ETH result (+0.96%, DSR 0.45 over 6 months) was luck: over 4.75 years it loses about 21–25% on every symbol, a steady bleed of roughly −5%/year at Sharpe −1.2 to −2.0.
-- [ ] **Stage 4: regime and time-of-day filters (5.5, 5.2).**
+- [x] **Stage 4: regime and time-of-day filters (5.5, 5.2).** Code `830f7992d589c726`; tables in `reports/phase1b/regime_*_5m_2022.md` and `baseline_5m_2022.md`.
+  - **Code:** generic `BaseStrategy` filters, all off by default, computed on closed `regime_tf` (1h) bars via `higher_tf`.
+    - Kaufman Efficiency Ratio (`er_n`, `er_min`/`er_max`), Choppiness Index (`chop_n`, `chop_min`/`chop_max`), and realized-vol percentile (`rv_n` = 24h vol ranked against the trailing `rv_pct_window` = 720h, `rv_pct_min`/`rv_pct_max`).
+    - `trade_hours="13-17"` gates on the bar's UTC close hour and wraps past midnight.
+    - The warm-up covers the percentile window. Rejections are counted.
+    - Tests cover the indicators, gating, hour wrap, no look-ahead with filters on, and live warm-up with filters on.
+  - **Setup:** thresholds were fixed **a priori** (from this file's 5.5/5.2 plus the median ER(24h) of BTC/ETH 1h over 2022–2026 ≈ 0.18, computed on the filter itself, not on returns). They are not fitted, so they add no grid trials.
+    - Dip strategies: ER ≤ 0.18 and vol percentile 20–95%.
+    - Breakout strategies: ER ≥ 0.18, vol percentile 20–95%, 13–17 UTC.
+    - 5m bars, BTC/ETH, 2022-01-01 → 2026-10-09, train 30d / test 7d.
+    - The filtered runs start their OOS ~1 month later (vol-percentile warm-up), so B&H differs.
+
+    | Strategy · Symbol | Unfiltered: OOS % (trades), Sharpe | Filtered: OOS % (trades), Sharpe | Filtered DSR / PBO |
+    |---|---|---|---|
+    | ema_pullback · BTC | −4.49 (81), −1.13 | −0.41 (5), −0.40 | 0.00 / 0.18 |
+    | ema_pullback · ETH | −3.96 (108), −0.66 | −0.08 (3), −0.05 | 0.01 / 0.33 |
+    | vwap_reversion · BTC | −0.17 (1), −0.46 | 0.00 (0) | – / 0.39 |
+    | vwap_reversion · ETH | +0.14 (2), 0.23 | 0.00 (0) | – / 0.42 |
+    | squeeze_breakout · BTC | −51.71 (1423), −3.56 | −2.51 (58), −0.59 | 0.01 / 0.57 |
+    | squeeze_breakout · ETH | −59.67 (1800), −3.38 | −4.27 (78), −0.66 | 0.00 / 0.04 |
+    | opening_range · BTC | −22.78 (442), −1.97 | −5.94 (129), −0.90 | 0.01 / 0.64 |
+    | opening_range · ETH | −23.36 (588), −1.53 | −8.57 (196), −0.86 | 0.00 / 0.02 |
+
+  - **Reading:** the filters cut trade counts by 70–96% and most of the losses, but **nothing turns positive**, so they remove bad trades without revealing a good one. The dip strategies almost stop trading.
+  - Over 2022–2026, unfiltered `squeeze_breakout` lost 52–60%; 5m intraday trading at VIP0 fees is a reliable money-loser here.
+
+**Phase 1b verdict: FAIL (no run passes DSR > 0.95 with PBO < 0.5; 53 runs in `research_runs`, 0 pass).**
+- Drop the 5m intraday strategies (opening_range, squeeze_breakout, ema_pullback, vwap_reversion) as standalone edges at these fees.
+- The one lead is **4h Donchian trend following**, strongest on ETH. Its high PBO says the 27-point grid is overfit noise. Next: test it with a fixed or 2–3 point grid chosen a priori, on more symbols (SOL, BNB) and as an equal-risk BTC/ETH/SOL portfolio, and only then re-run the gate.
 - [x] **Stage 5: `research_runs` Postgres table and dashboard Research tab.** *(done ahead of stages 2–4 while their runs computed)*
   - `database.ResearchRun` (table `research_runs`, keyed by the cache key): spec, risk and params as JSON, plus the headline numbers (OOS return, B&H, max DD, trades, folds, OOS and B&H Sharpe, DSR, PBO, seconds). NaN is stored as NULL.
   - `research_cache.save` upserts each new run (best effort: 3 s connect timeout, then it logs once and stops trying; `RESEARCH_DB=0` turns it off). The files in `data/research/` stay the source of truth for equity and folds.

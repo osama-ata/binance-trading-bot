@@ -137,3 +137,22 @@ def realized_vol(close: pd.Series, n: int, bar: pd.Timedelta) -> pd.Series:
     """Annualised realized volatility: std of the last `n` log returns, scaled by sqrt(bars per year)."""
     per_year = pd.Timedelta(days=365) / bar
     return np.log(close).diff().rolling(n, min_periods=n).std() * np.sqrt(per_year)
+
+
+def efficiency_ratio(close: pd.Series, n: int) -> pd.Series:
+    """Kaufman Efficiency Ratio: net move over the sum of absolute moves in the last `n` bars (0 = chop, 1 = trend)."""
+    path = close.diff().abs().rolling(n, min_periods=n).sum()
+    return (close - close.shift(n)).abs() / path.where(path > 0)
+
+
+def choppiness(df: pd.DataFrame, n: int) -> pd.Series:
+    """Choppiness Index (0-100): high = ranging, low = trending."""
+    tr_sum = true_range(df).rolling(n, min_periods=n).sum()
+    span = df["High"].rolling(n, min_periods=n).max() - df["Low"].rolling(n, min_periods=n).min()
+    return 100 * np.log10(tr_sum / span.where(span > 0)) / np.log10(n)
+
+
+def vol_percentile(close: pd.Series, n: int, window: int) -> pd.Series:
+    """Percentile rank (0-1) of the current `n`-bar realized volatility within the trailing `window` bars."""
+    rv = np.log(close).diff().rolling(n, min_periods=n).std()
+    return rv.rolling(window, min_periods=window).rank(pct=True)

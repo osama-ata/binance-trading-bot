@@ -49,6 +49,22 @@ class BaseStrategy:
         # vol_lookback signal-bar log returns), still capped by max_position_pct. 0 = off (stop-distance sizing).
         "vol_target": 0.0,
         "vol_lookback": 30,
+        # Regime filters (TODO 5.5), computed on closed `regime_tf` bars; entries are skipped outside the band.
+        # Defaults leave every filter off.
+        "regime_tf": "1h",
+        "er_n": 24,  # Kaufman Efficiency Ratio lookback (regime bars)
+        "er_min": 0.0,
+        "er_max": 1.0,
+        "chop_n": 24,  # Choppiness Index lookback (regime bars)
+        "chop_min": 0.0,
+        "chop_max": 100.0,
+        "rv_n": 24,  # realized-vol lookback, ranked against the trailing rv_pct_window regime bars
+        "rv_pct_window": 720,
+        "rv_pct_min": 0.0,
+        "rv_pct_max": 1.0,
+        # Time-of-day gate (TODO 5.2), a volatility filter only: "13-17" allows entries on bars that close in
+        # [13:00, 17:00) UTC; wraps past midnight if start > end. None = any hour.
+        "trade_hours": None,
     }
     # Grid used by the walk-forward optimizer
     param_grid: ClassVar[dict[str, list[Any]]] = {}
@@ -59,7 +75,7 @@ class BaseStrategy:
         if unknown:
             raise ValueError(f"Unknown params for {self.name}: {sorted(unknown)}")
         self.p: dict[str, Any] = {**merged, **params}
-        for key in ("signal_tf", "atr_tf", "htf"):
+        for key in ("signal_tf", "atr_tf", "htf", "regime_tf"):
             if key in self.p:
                 self.p[key] = ta.normalize_tf(self.p[key])
         self.fee_rate = fee_rate  # per side; set from settings.fee_rate / BacktestConfig.commission
@@ -77,7 +93,23 @@ class BaseStrategy:
         own = self.indicator_warmup(bar * sig)
         if self.p["vol_target"]:
             own = max(own, self.p["vol_lookback"] + 1)
-        return max(own * sig + sig, atr_bars * atr + atr)
+        regime = 0
+        if self._regime_filters():
+            r = self._ratio(bar, self.p["regime_tf"])
+            regime = (max(self.p["er_n"], self.p["chop_n"], self.p["rv_n"] + self.p["rv_pct_window"]) + 1) * r + r
+        return max(own * sig + sig, atr_bars * atr + atr, regime)
+
+    def _regime_filters(self) -> list[str]:
+        """Regime columns that are switched on (non-default bounds)."""
+        p = self.p
+        on = []
+        if p["er_min"] > 0 or p["er_max"] < 1:
+            on.append("er")
+        if p["chop_min"] > 0 or p["chop_max"] < 100:
+            on.append("chop")
+        if p["rv_pct_min"] > 0 or p["rv_pct_max"] < 1:
+            on.append("rv_pct")
+        return on
 
     @staticmethod
     def _ratio(bar: pd.Timedelta, tf: str | None) -> int:
@@ -132,7 +164,27 @@ class BaseStrategy:
             out["atr"] = ta.higher_tf(df, self.p["atr_tf"], lambda h: ta.atr(h, n))
         else:
             out["atr"] = out["atr_base"]
+        rtf, p = self.p["regime_tf"], self.p
+        fns = {"er": lambda h: ta.efficiency_ratio(h["Close"], p["er_n"]),
+               "chop": lambda h: ta.choppiness(h, p["chop_n"]),
+               "rv_pct": lambda h: ta.vol_percentile(h["Close"], p["rv_n"], p["rv_pct_window"])}
+        for col in self._regime_filters():
+            out[col] = ta.higher_tf(df, rtf, fns[col]) if rtf else fns[col](df)
         return out
+
+    def _regime_ok(self, row: dict) -> bool:
+        p = self.p
+        bounds = {"er": (p["er_min"], p["er_max"]), "chop": (p["chop_min"], p["chop_max"]),
+                  "rv_pct": (p["rv_pct_min"], p["rv_pct_max"])}
+        return all(bounds[c][0] <= row[c] <= bounds[c][1] for c in self._regime_filters())
+
+    def _hour_ok(self, ind: pd.DataFrame, i: int) -> bool:
+        if not self.p["trade_hours"]:
+            return True
+        start, end = (int(x) for x in str(self.p["trade_hours"]).split("-"))
+        bar = ind.index[1] - ind.index[0] if len(ind) > 1 else pd.Timedelta(0)
+        hour = (ind.index[i] + bar).hour  # the bar's close time, when the decision is made
+        return start <= hour < end if start <= end else (hour >= start or hour < end)
 
     def _rows(self, ind: pd.DataFrame, i: int) -> tuple[dict, dict]:
         """(row, previous signal row) as plain dicts. Rows are converted once per frame, because building a
@@ -172,6 +224,12 @@ class BaseStrategy:
             return None
         if row["atr_base"] / close < self.p["min_atr_pct"]:
             self.rejected["low volatility"] += 1
+            return None
+        if not self._regime_ok(row):
+            self.rejected["regime filter"] += 1
+            return None
+        if not self._hour_ok(ind, i):
+            self.rejected["outside trade hours"] += 1
             return None
         size_frac = None
         if self.p["vol_target"]:

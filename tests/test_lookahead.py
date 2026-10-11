@@ -21,10 +21,12 @@ VARIANTS = [(name, {}) for name in STRATEGIES] + [
     ("vwap_reversion", {"signal_tf": "15min"}),
     ("ema_pullback", {"signal_tf": "15min"}),
     ("donchian_ensemble", {"signal_tf": "1h", "vol_target": 0.3, "vol_lookback": 20}),
+    ("squeeze_breakout", {"er_min": 0.05, "chop_max": 90.0, "rv_pct_min": 0.1, "rv_pct_window": 48,
+                          "trade_hours": "6-22"}),
 ]
 
 
-@pytest.mark.parametrize("name, extra", VARIANTS, ids=[f"{n}-{e.get('signal_tf', 'base')}{'-vt' if 'vol_target' in e else ''}" for n, e in VARIANTS])
+@pytest.mark.parametrize("name, extra", VARIANTS, ids=[f"{n}-{e.get('signal_tf', 'base')}{'-vt' if 'vol_target' in e else ''}{'-regime' if 'er_min' in e else ''}" for n, e in VARIANTS])
 def test_no_lookahead_at_200_cut_points(name, extra, ohlcv):
     strat = STRATEGIES[name](**{**LOOSE[name], **extra})
     cuts = default_cuts(strat, ohlcv, n=200)
@@ -73,3 +75,11 @@ def test_short_history_is_detected(long_ohlcv):
     """Sanity check: 40 bars is far too short for EMA200-on-1h, and the check must say so."""
     rec = recursive_check(STRATEGIES["ema_pullback"](), long_ohlcv, [40, 5000], eval_points=4)
     assert rec.loc[40, "max"] > 1e-3 > rec.loc[5000, "max"]
+
+
+def test_warmup_covers_regime_filters(long_ohlcv):
+    strat = STRATEGIES["opening_range"](er_max=0.5, chop_min=10.0, rv_pct_min=0.2, rv_pct_window=600)
+    n = strat.warmup_bars(pd.Timedelta("5min")) + 50
+    assert n < len(long_ohlcv) // 2
+    rec = recursive_check(strat, long_ohlcv, [n], eval_points=8)
+    assert rec.loc[n, "max"] < 1e-3, rec.loc[n][rec.loc[n] >= 1e-3].to_dict()
