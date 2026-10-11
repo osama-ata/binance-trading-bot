@@ -1,0 +1,330 @@
+{
+  "analysis_type": "returns_based_residual_edge",
+  "data": {
+    "annualization_factor": 365,
+    "baseline_columns": [
+      "buy_hold_return",
+      "sma200_return"
+    ],
+    "configured_minimum_observations": 60,
+    "declarations": {
+      "analysis_scope": "out_of_sample",
+      "baseline_return_basis": "net",
+      "baseline_selection": "predeclared",
+      "strategy_return_basis": "net",
+      "universe_data": "not_applicable"
+    },
+    "effective_minimum_observations": 60,
+    "end_date": "2026-10-09",
+    "frequency": "daily",
+    "observation_count": 1980,
+    "regime_columns": [
+      "trend_regime"
+    ],
+    "return_unit_normalized": "decimal",
+    "start_date": "2021-05-09",
+    "strategy_column": "strategy_return"
+  },
+  "method_notes": [
+    "OLS includes an intercept.",
+    "Residual edge ratio is annualized alpha divided by annualized residual volatility.",
+    "HAC standard errors address heteroskedasticity and serial correlation asymptotically.",
+    "Results describe declared return-series exposure, not holdings-based Brinson attribution."
+  ],
+  "models": [
+    {
+      "adjusted_r_squared": 0.1271444994,
+      "alpha": {
+        "annualized_arithmetic": 0.032922655,
+        "hac_standard_error_periodic": 0.0001521854,
+        "periodic": 9.01991e-05,
+        "t_stat": 0.5926917565
+      },
+      "baseline_columns": [
+        "buy_hold_return"
+      ],
+      "coefficients": [
+        {
+          "estimate": 9.01991e-05,
+          "hac_standard_error": 0.0001521854,
+          "name": "intercept",
+          "t_stat": 0.5926917565
+        },
+        {
+          "estimate": 0.0819775277,
+          "hac_standard_error": 0.0139606022,
+          "name": "buy_hold_return",
+          "t_stat": 5.8720624101
+        }
+      ],
+      "diagnostic_status": "RESIDUAL_FRAGILE",
+      "hac_lags": 7,
+      "name": "buy_hold",
+      "observation_count": 1980,
+      "r_squared": 0.1275855582,
+      "residual": {
+        "active_return_max_drawdown": -0.1586896855,
+        "annualized_volatility": 0.1167300955,
+        "durbin_watson": 1.7220170447,
+        "lag_one_autocorrelation": 0.1389809965,
+        "periodic_volatility": 0.0061099324,
+        "residual_edge_ratio": 0.2820408467
+      },
+      "role": "primary",
+      "rolling": {
+        "enabled": true,
+        "failed_window_count": 29,
+        "latest": {
+          "annualized_alpha": 0.2026517905,
+          "end_index": 1979,
+          "r_squared": 0.3030990509,
+          "residual_edge_ratio": 1.2559584653
+        },
+        "positive_alpha_fraction": 0.4296455424,
+        "r_squared": {
+          "max": 0.7012251152,
+          "median": 0.0994967309,
+          "min": 4.64029e-05
+        },
+        "residual_edge_ratio": {
+          "max": 3.2540273222,
+          "median": -0.4286673163,
+          "min": -5.5953464022
+        },
+        "window": 90,
+        "window_count": 1862
+      },
+      "status_reasons": [
+        "29 rolling windows could not be estimated."
+      ],
+      "vif": {
+        "buy_hold_return": 1.0
+      }
+    },
+    {
+      "adjusted_r_squared": 0.1368705252,
+      "alpha": {
+        "annualized_arithmetic": 0.0346712466,
+        "hac_standard_error_periodic": 0.0001546275,
+        "periodic": 9.49897e-05,
+        "t_stat": 0.6143130401
+      },
+      "baseline_columns": [
+        "sma200_return"
+      ],
+      "coefficients": [
+        {
+          "estimate": 9.49897e-05,
+          "hac_standard_error": 0.0001546275,
+          "name": "intercept",
+          "t_stat": 0.6143130401
+        },
+        {
+          "estimate": 0.1270593975,
+          "hac_standard_error": 0.024852624,
+          "name": "sma200_return",
+          "t_stat": 5.1125143786
+        }
+      ],
+      "diagnostic_status": "RESIDUAL_FRAGILE",
+      "hac_lags": 7,
+      "name": "sma200_trend",
+      "observation_count": 1980,
+      "r_squared": 0.1373066695,
+      "residual": {
+        "active_return_max_drawdown": -0.1826354441,
+        "annualized_volatility": 0.1160779255,
+        "durbin_watson": 1.6847543201,
+        "lag_one_autocorrelation": 0.157597539,
+        "periodic_volatility": 0.0060757963,
+        "residual_edge_ratio": 0.2986894061
+      },
+      "role": "sensitivity",
+      "rolling": {
+        "enabled": true,
+        "failed_window_count": 519,
+        "latest": {
+          "annualized_alpha": 0.3716109947,
+          "end_index": 1979,
+          "r_squared": 0.0903282716,
+          "residual_edge_ratio": 2.0158423565
+        },
+        "positive_alpha_fraction": 0.5641399417,
+        "r_squared": {
+          "max": 0.9120749012,
+          "median": 0.134057893,
+          "min": 3.48e-07
+        },
+        "residual_edge_ratio": {
+          "max": 5.1977983699,
+          "median": 0.4403294389,
+          "min": -5.5953464022
+        },
+        "window": 90,
+        "window_count": 1372
+      },
+      "status_reasons": [
+        "519 rolling windows could not be estimated."
+      ],
+      "vif": {
+        "sma200_return": 1.0
+      }
+    },
+    {
+      "adjusted_r_squared": 0.1580653911,
+      "alpha": {
+        "annualized_arithmetic": 0.0306452967,
+        "hac_standard_error_periodic": 0.0001501527,
+        "periodic": 8.39597e-05,
+        "t_stat": 0.559162311
+      },
+      "baseline_columns": [
+        "buy_hold_return",
+        "sma200_return"
+      ],
+      "coefficients": [
+        {
+          "estimate": 8.39597e-05,
+          "hac_standard_error": 0.0001501527,
+          "name": "intercept",
+          "t_stat": 0.559162311
+        },
+        {
+          "estimate": 0.0453991282,
+          "hac_standard_error": 0.0115348733,
+          "name": "buy_hold_return",
+          "t_stat": 3.9358150634
+        },
+        {
+          "estimate": 0.0816725704,
+          "hac_standard_error": 0.0263841705,
+          "name": "sma200_return",
+          "t_stat": 3.0955140446
+        }
+      ],
+      "diagnostic_status": "RESIDUAL_FRAGILE",
+      "hac_lags": 7,
+      "name": "buy_hold_plus_sma200",
+      "observation_count": 1980,
+      "r_squared": 0.1589162598,
+      "residual": {
+        "active_return_max_drawdown": -0.1713518361,
+        "annualized_volatility": 0.1146148886,
+        "durbin_watson": 1.7112359633,
+        "lag_one_autocorrelation": 0.1443560944,
+        "periodic_volatility": 0.0059992175,
+        "residual_edge_ratio": 0.2673762294
+      },
+      "role": "sensitivity",
+      "rolling": {
+        "enabled": true,
+        "failed_window_count": 933,
+        "latest": {
+          "annualized_alpha": 0.2009078273,
+          "end_index": 1979,
+          "r_squared": 0.3754027335,
+          "residual_edge_ratio": 1.3152465691
+        },
+        "positive_alpha_fraction": 0.5334029228,
+        "r_squared": {
+          "max": 0.9995940498,
+          "median": 0.2209263407,
+          "min": 0.0012421258
+        },
+        "residual_edge_ratio": {
+          "max": 4.4605658646,
+          "median": 0.1416120286,
+          "min": -5.4022346813
+        },
+        "window": 90,
+        "window_count": 958
+      },
+      "status_reasons": [
+        "933 rolling windows could not be estimated."
+      ],
+      "vif": {
+        "buy_hold_return": 1.8107578516,
+        "sma200_return": 1.8107578516
+      }
+    }
+  ],
+  "primary_model": "buy_hold",
+  "regime_analysis": {
+    "trend_regime": [
+      {
+        "active_return_metrics": {
+          "annualized_arithmetic_return": 0.0100480396,
+          "annualized_volatility": 0.0959840495,
+          "max_drawdown": -0.1287068527,
+          "periodic_mean": 2.75289e-05,
+          "periodic_volatility": 0.0050240348,
+          "sharpe_zero_rate": 0.1046844726
+        },
+        "evidence_status": "ADEQUATE",
+        "label": "bear",
+        "observation_count": 944,
+        "positive_fraction": 0.5
+      },
+      {
+        "active_return_metrics": {
+          "annualized_arithmetic_return": 0.0537659339,
+          "annualized_volatility": 0.1328807518,
+          "max_drawdown": -0.1300893106,
+          "periodic_mean": 0.0001473039,
+          "periodic_volatility": 0.0069552964,
+          "sharpe_zero_rate": 0.4046179234
+        },
+        "evidence_status": "ADEQUATE",
+        "label": "bull",
+        "observation_count": 1036,
+        "positive_fraction": 0.5057915058
+      }
+    ]
+  },
+  "schema_version": "1.0",
+  "source": {
+    "config_name": "BTCUSDT_4h_vt.json",
+    "csv_name": "BTCUSDT_4h_vt.csv"
+  },
+  "strategy_metrics": {
+    "annualized_arithmetic_return": 0.050224317,
+    "annualized_volatility": 0.1249745029,
+    "max_drawdown": -0.1763573461,
+    "periodic_mean": 0.0001376009,
+    "periodic_volatility": 0.0065414645,
+    "sharpe_zero_rate": 0.4018765098
+  },
+  "verdict": {
+    "decision_eligibility": "REVIEW_REQUIRED",
+    "decision_grade": false,
+    "reasons": [
+      "29 rolling windows could not be estimated."
+    ],
+    "status": "RESIDUAL_FRAGILE",
+    "thresholds": {
+      "alpha_t_stat_min": 2.0,
+      "baseline_explained_r2_min": 0.75,
+      "residual_edge_ratio_min": 0.75,
+      "rolling_positive_fraction_min": 0.6,
+      "weak_edge_ratio_max": 0.5
+    },
+    "trade_authorization": "NOT_AUTHORIZED"
+  },
+  "warnings": [
+    {
+      "id": "ROLLING_ANALYSIS_INCOMPLETE",
+      "message": "Model buy_hold could not estimate 29 rolling windows.",
+      "severity": "high"
+    },
+    {
+      "id": "ROLLING_ANALYSIS_INCOMPLETE",
+      "message": "Model sma200_trend could not estimate 519 rolling windows.",
+      "severity": "high"
+    },
+    {
+      "id": "ROLLING_ANALYSIS_INCOMPLETE",
+      "message": "Model buy_hold_plus_sma200 could not estimate 933 rolling windows.",
+      "severity": "high"
+    }
+  ]
+}

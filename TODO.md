@@ -240,6 +240,26 @@ Slower signals cut trade counts by 4–7× and most of the fee bleed, but nothin
   - **Reading:** the filters cut trade counts by 70–96% and most of the losses, but **nothing turns positive**, so they remove bad trades without revealing a good one. The dip strategies almost stop trading.
   - Over 2022–2026, unfiltered `squeeze_breakout` lost 52–60%; 5m intraday trading at VIP0 fees is a reliable money-loser here.
 
+- [x] **Follow-up: residual-edge check on the 4h Donchian** (2026-10-11). This used [`tradermonty/claude-trading-skills`](https://github.com/tradermonty/claude-trading-skills) `residual-edge-analyzer` (MIT, stdlib only, commit `725ce0e`; run from a scratch clone, not vendored). Inputs come from `scripts/residual_edge_inputs.py`; outputs are in `reports/phase1b/residual_edge/`.
+  - **Setup:** daily OOS returns, 2021-05-09 → 2026-10-09 (1,980 days), annualised ×365. Baselines were declared before running: same-coin buy & hold (primary); a naive 200-day-SMA long/flat trend on the same coin (previous close, 0.1% per switch); and both together. Regime = bull/bear by the previous close vs its 200-day SMA. HAC (Newey–West) OLS, 90-day rolling windows.
+
+    | Run | Beta to B&H (t) | R² | Ann. alpha | Alpha HAC t | Residual edge ratio | Rolling windows with alpha > 0 | Active return bear / bull |
+    |---|---|---|---|---|---|---|---|
+    | ETH 4h stop | 0.022 (5.9) | 0.17 | +2.2% | 1.43 | 0.61 | 51% | +2.0% / +2.3% |
+    | ETH 4h VT 30% | 0.085 (6.2) | 0.17 | +8.6% | 1.47 | 0.63 | 51% | +8.9% / +8.4% |
+    | BTC 4h stop | 0.019 (5.4) | 0.12 | +0.5% | 0.38 | 0.19 | 43% | +0.0% / +1.0% |
+    | BTC 4h VT 30% | 0.082 (5.9) | 0.13 | +3.3% | 0.59 | 0.28 | 43% | +1.0% / +5.4% |
+
+  - **Verdict: RESIDUAL_FRAGILE / REVIEW_REQUIRED for all four.** Every baseline model gives about the same alpha.
+  - **What it shows:**
+    - The 4h Donchian's return is **not explained by market exposure** (low beta, R² ≈ 0.15), and on ETH it is **not just "avoided the 2022 crash"**: the active return is the same in bull and bear regimes. The naive 200-day-SMA trend copy explains even less.
+  - **What it doesn't show:**
+    - The alpha is **not statistically significant** (t ≈ 1.45 on ETH, under 0.6 on BTC, against a 2.0 bar).
+    - It is **unstable** (alpha positive in only ~half of the 90-day windows).
+    - The residual edge ratio (0.61–0.63) is below the 0.75 bar.
+    - This agrees with DSR 0.83–0.88 and PBO > 0.5: a real but weak, noisy return stream, not a proven edge.
+  - Some rolling windows can't be fitted (long flat stretches give zero-variance series), which the tool flags as HIGH.
+
 **Phase 1b verdict: FAIL (no run passes DSR > 0.95 with PBO < 0.5; 53 runs in `research_runs`, 0 pass).**
 - Drop the 5m intraday strategies (opening_range, squeeze_breakout, ema_pullback, vwap_reversion) as standalone edges at these fees.
 - The one lead is **4h Donchian trend following**, strongest on ETH. Its high PBO says the 27-point grid is overfit noise. Next: test it with a fixed or 2–3 point grid chosen a priori, on more symbols (SOL, BNB) and as an equal-risk BTC/ETH/SOL portfolio, and only then re-run the gate.

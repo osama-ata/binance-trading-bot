@@ -1,0 +1,45 @@
+{
+  "schema_version": "1.0",
+  "date_column": "date",
+  "strategy_column": "strategy_return",
+  "return_unit": "decimal",
+  "frequency": "daily",
+  "annualization_factor": 365,
+  "primary_model": {
+    "name": "buy_hold",
+    "baseline_columns": [
+      "buy_hold_return"
+    ]
+  },
+  "sensitivity_models": [
+    {
+      "name": "sma200_trend",
+      "baseline_columns": [
+        "sma200_return"
+      ]
+    },
+    {
+      "name": "buy_hold_plus_sma200",
+      "baseline_columns": [
+        "buy_hold_return",
+        "sma200_return"
+      ]
+    }
+  ],
+  "regime_columns": [
+    "trend_regime"
+  ],
+  "rolling_window": 90,
+  "minimum_observations": 60,
+  "minimum_regime_observations": 20,
+  "minimum_rolling_windows": 12,
+  "hac_lags": "auto",
+  "include_series": false,
+  "data_declarations": {
+    "baseline_selection": "predeclared",
+    "strategy_return_basis": "net",
+    "baseline_return_basis": "net",
+    "analysis_scope": "out_of_sample",
+    "universe_data": "not_applicable"
+  }
+}
