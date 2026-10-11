@@ -270,6 +270,25 @@ Slower signals cut trade counts by 4–7× and most of the fee bleed, but nothin
   - The dashboard's new **🔬 Research** tab has filters (strategy, symbol, code fingerprint, passes-gate only), a DSR-vs-PBO scatter with the gate region shaded, the run table, and each run's stitched OOS equity and folds.
   - Tests: upsert, NaN to NULL, no duplicates, a database failure never raises; tests never touch the real database (autouse fixture).
 
+### Phase 1c: 4h Donchian robustness (approved 2026-10-11)
+
+**Pre-registered before the first run** (committed with `scripts/robustness.py`, results to follow in a later commit):
+- **Strategy:** `donchian_ensemble` with the **strategy defaults**, chosen in Phase 1 before any 4h result existed: entry 0.6 / exit 0.2 / stop 3×ATR / lookbacks 24–384 signal bars.
+  - 4h signals on 1h execution bars, `vol_target=0.3` over 180 signal bars, `max_position_pct=1.0`, time stop off.
+  - **No optimiser**, so the walk-forward grid's selection noise (the high PBO in Phase 1b) is gone.
+- **Universe and window:** BTC, ETH, SOL, BNB, all evaluated on the same window **2021-06-01 → 2026-10-09** (history from 2020-01-01 or listing for warm-up).
+  - Primary result: **equal-weight portfolio** of the four (daily-rebalanced average of daily returns), compared against the equal-weight buy & hold basket.
+- **Stress tests** (from `backtest-expert`):
+  - One-at-a-time parameter sweep at 50/75/125/150% (stop_atr, entry/exit thresholds; lookbacks ×0.5/×2), 15 variants including the base.
+  - Costs at 2× and 3× slippage and a 0.15% fee.
+  - Year-by-year returns.
+- **Gate** (all must hold):
+  - Portfolio **DSR > 0.95**, deflated over the 15 variants.
+  - **PBO < 0.5**, CSCV over the 15 portfolio return series.
+  - Positive in a **majority of calendar years**.
+  - Sharpe > 0 for **every** sweep variant and at **2× slippage**.
+- If it passes, also run the residual-edge check on the portfolio vs the buy & hold basket before proposing Phase 2.
+
 ---
 
 ## 2. P0-C: live engine hardening (`src/engine.py`, `src/brokers.py`, `src/binance_client.py`)
