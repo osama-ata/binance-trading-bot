@@ -10,7 +10,7 @@
 > **Handoff (2026-10-11): Phase 1 finished on the Mac Studio.** Work continues there (`~/coding/binance-trading-bot`, 20 cores, use `--jobs 16`).
 > - The missing `donchian_ensemble` ETHUSDT 15m run and the 5m-exec / 1h-signal comparison (`reports/phase1/final_5m_exec_1h_signals.md`) are done. Neither changes the verdict (still **FAIL**).
 > - The Docker stack runs again: the Dockerfile now installs from `uv.lock` (`pip install .` failed with no build backend and no README in the build context). The compose db's host port is `${POSTGRES_PORT:-5432}`; on the Studio, 5432 belongs to another project, so `.env` sets `POSTGRES_PORT=5433`.
-> - Proposed next (not yet approved): write each run's summary to a Postgres `research_runs` table as well (files stay the source for equity/folds), plus a dashboard Research tab. After that, the research directions in the gate verdict below.
+> - **Phase 1b (approved 2026-10-11), in progress:** (1) longer history, (2) Donchian on 4h/1d signals with vol-targeted sizing, (3) opening_range on more symbols and longer history, (4) regime and time-of-day filters, (5) a Postgres `research_runs` table plus a dashboard Research tab. See "Phase 1b" under section 1.
 
 ---
 
@@ -165,6 +165,17 @@ Buy & hold over the same windows was +4% to +35%. Caveats:
 Slower signals cut trade counts by 4–7× and most of the fee bleed, but nothing turns positive. The ema_pullback and vwap_reversion rules almost never fire on 1h. squeeze_breakout's PBO above 0.8 means the in-sample parameter choice is mostly noise.
 
 **Gate verdict (Phase 1 → Phase 2): FAIL.** No strategy/symbol/timeframe reaches DSR > 0.95 with PBO < 0.5 (all 20 final runs plus the 6 1h-signal runs). The best is opening_range on ETH 5m: +0.96% OOS, DSR 0.45, PBO 0.25, so promising but not significant. Per the plan, **do not start Phase 2 (live hardening)**. Keep researching: Donchian/trend on slower bars (4h/1d signals), regime filters (5.5), and opening_range on more symbols and longer history.
+
+### Phase 1b: research to find something that passes the gate (same gate: DSR > 0.95 and PBO < 0.5)
+
+- [x] **Stage 1: longer history.** Downloaded and cached (data.binance.vision):
+  - 1h BTCUSDT/ETHUSDT 2020-01-01 → 2026-10-09: 59,345 bars each. 15 gaps, all known exchange outages; the longest is 6h (2020-02-19).
+  - 5m BTCUSDT/ETHUSDT/SOLUSDT/BNBUSDT 2022-01-01 → 2026-10-09: 501,968 bars each. One gap (2023-03-24 outage, 85 min).
+  - `wf_report.py` gained `--risk KEY=VALUE` (RiskManager settings, e.g. `max_position_pct=1.0`; only added to the cache key when set) and a **B&H Sharpe** column: the annualised Sharpe of buy & hold over the same OOS window, the risk-adjusted bar a long-only strategy has to beat.
+- [ ] **Stage 2: Donchian on 4h / 1d signals with vol-targeted sizing (3.5).**
+- [ ] **Stage 3: opening_range on longer history and more symbols.**
+- [ ] **Stage 4: regime and time-of-day filters (5.5, 5.2).**
+- [ ] **Stage 5: `research_runs` Postgres table and dashboard Research tab.**
 
 ---
 
