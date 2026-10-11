@@ -131,3 +131,9 @@ def align_higher_tf(df: pd.DataFrame, rule: str, frame_fn) -> tuple[pd.DataFrame
     aligned.index = df.index
     is_close = pd.Series(base_close.isin(frame.index), index=df.index)
     return aligned, is_close
+
+
+def realized_vol(close: pd.Series, n: int, bar: pd.Timedelta) -> pd.Series:
+    """Annualised realized volatility: std of the last `n` log returns, scaled by sqrt(bars per year)."""
+    per_year = pd.Timedelta(days=365) / bar
+    return np.log(close).diff().rolling(n, min_periods=n).std() * np.sqrt(per_year)

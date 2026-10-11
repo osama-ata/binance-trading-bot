@@ -75,7 +75,7 @@ class _Adapter(Strategy):
             return
         scale = self.data.Close[-1] / sig.entry
         equity = self.equity
-        qty = self.risk.size(equity, sig.entry * scale, sig.stop * scale)
+        qty = self.risk.size(equity, sig.entry * scale, sig.stop * scale, sig.size_frac)
         fraction = min(qty * self.data.Close[-1] / equity, 0.9999) if equity > 0 else 0
         if fraction <= 0:
             return

@@ -20,10 +20,11 @@ VARIANTS = [(name, {}) for name in STRATEGIES] + [
     ("squeeze_breakout", {"signal_tf": "1h"}),
     ("vwap_reversion", {"signal_tf": "15min"}),
     ("ema_pullback", {"signal_tf": "15min"}),
+    ("donchian_ensemble", {"signal_tf": "1h", "vol_target": 0.3, "vol_lookback": 20}),
 ]
 
 
-@pytest.mark.parametrize("name, extra", VARIANTS, ids=[f"{n}-{e.get('signal_tf', 'base')}" for n, e in VARIANTS])
+@pytest.mark.parametrize("name, extra", VARIANTS, ids=[f"{n}-{e.get('signal_tf', 'base')}{'-vt' if 'vol_target' in e else ''}" for n, e in VARIANTS])
 def test_no_lookahead_at_200_cut_points(name, extra, ohlcv):
     strat = STRATEGIES[name](**{**LOOSE[name], **extra})
     cuts = default_cuts(strat, ohlcv, n=200)

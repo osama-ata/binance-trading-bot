@@ -6,11 +6,17 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 
-def position_size(equity: float, entry: float, stop: float, risk_pct: float, max_position_pct: float) -> float:
-    """Units to buy so that hitting the stop loses `risk_pct` of equity, capped at `max_position_pct` notional."""
+def position_size(equity: float, entry: float, stop: float, risk_pct: float, max_position_pct: float,
+                  notional_frac: float | None = None) -> float:
+    """Units to buy so that hitting the stop loses `risk_pct` of equity, capped at `max_position_pct` notional.
+
+    With `notional_frac` (volatility targeting) the notional is that fraction of equity instead, under the same cap.
+    """
     risk_per_unit = entry - stop
     if risk_per_unit <= 0 or entry <= 0 or equity <= 0:
         return 0.0
+    if notional_frac is not None:
+        return equity * max(min(notional_frac, max_position_pct), 0.0) / entry
     qty = equity * risk_pct / risk_per_unit
     return min(qty, equity * max_position_pct / entry)
 
@@ -120,8 +126,8 @@ class RiskManager:
             return False, f"cooldown ({self._cooldown_left} bars)"
         return True, ""
 
-    def size(self, equity: float, entry: float, stop: float) -> float:
-        return position_size(equity, entry, stop, self.risk_per_trade, self.max_position_pct)
+    def size(self, equity: float, entry: float, stop: float, notional_frac: float | None = None) -> float:
+        return position_size(equity, entry, stop, self.risk_per_trade, self.max_position_pct, notional_frac)
 
     def on_open(self) -> None:
         self._trades_today += 1

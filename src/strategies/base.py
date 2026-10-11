@@ -19,6 +19,8 @@ class Signal:
     stop: float
     target: float
     reason: str
+    # Volatility targeting: position notional as a fraction of equity (None = size from the stop distance)
+    size_frac: float | None = None
 
     @property
     def risk_per_unit(self) -> float:
@@ -43,6 +45,10 @@ class BaseStrategy:
         "min_stop_fee_mult": 4.0,  # stop distance must be >= 4 round trips (fees <= 0.25R)
         "min_target_fee_mult": 5.0,  # target distance must be >= 5 round trips
         "min_atr_pct": 0.0,  # skip entries when signal-timeframe ATR% is below this (0 = off)
+        # Volatility-targeted sizing (TODO 3.5): notional = vol_target / realized vol (annualised, from the last
+        # vol_lookback signal-bar log returns), still capped by max_position_pct. 0 = off (stop-distance sizing).
+        "vol_target": 0.0,
+        "vol_lookback": 30,
     }
     # Grid used by the walk-forward optimizer
     param_grid: ClassVar[dict[str, list[Any]]] = {}
@@ -68,7 +74,10 @@ class BaseStrategy:
         sig = self._ratio(bar, self.p["signal_tf"])
         atr = self._ratio(bar, self.p["atr_tf"])
         atr_bars = ta.ewm_warmup(1 / self.p["atr_n"]) + self.p["atr_n"]  # Wilder ATR on the atr_tf bars
-        return max(self.indicator_warmup(bar * sig) * sig + sig, atr_bars * atr + atr)
+        own = self.indicator_warmup(bar * sig)
+        if self.p["vol_target"]:
+            own = max(own, self.p["vol_lookback"] + 1)
+        return max(own * sig + sig, atr_bars * atr + atr)
 
     @staticmethod
     def _ratio(bar: pd.Timedelta, tf: str | None) -> int:
@@ -96,6 +105,8 @@ class BaseStrategy:
     def _signal_frame(self, df: pd.DataFrame) -> pd.DataFrame:
         f = df.copy()
         f["atr_base"] = ta.atr(df, self.p["atr_n"])  # signal-timeframe ATR
+        if self.p["vol_target"] and len(df) > 1:
+            f["rvol"] = ta.realized_vol(df["Close"], self.p["vol_lookback"], df.index[1] - df.index[0])
         for k, v in self.indicators(df).items():
             f[k] = v
         return f
@@ -162,7 +173,10 @@ class BaseStrategy:
         if row["atr_base"] / close < self.p["min_atr_pct"]:
             self.rejected["low volatility"] += 1
             return None
-        return Signal(entry=float(close), stop=float(stop), target=float(target), reason=reason)
+        size_frac = None
+        if self.p["vol_target"]:
+            size_frac = float(self.p["vol_target"] / row["rvol"]) if row["rvol"] > 0 else 0.0
+        return Signal(entry=float(close), stop=float(stop), target=float(target), reason=reason, size_frac=size_frac)
 
     def stop_for(self, row: dict) -> float:
         return row["Close"] - self.p["stop_atr"] * row["atr"]

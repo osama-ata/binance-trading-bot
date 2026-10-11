@@ -172,7 +172,34 @@ Slower signals cut trade counts by 4–7× and most of the fee bleed, but nothin
   - 1h BTCUSDT/ETHUSDT 2020-01-01 → 2026-10-09: 59,345 bars each. 15 gaps, all known exchange outages; the longest is 6h (2020-02-19).
   - 5m BTCUSDT/ETHUSDT/SOLUSDT/BNBUSDT 2022-01-01 → 2026-10-09: 501,968 bars each. One gap (2023-03-24 outage, 85 min).
   - `wf_report.py` gained `--risk KEY=VALUE` (RiskManager settings, e.g. `max_position_pct=1.0`; only added to the cache key when set) and a **B&H Sharpe** column: the annualised Sharpe of buy & hold over the same OOS window, the risk-adjusted bar a long-only strategy has to beat.
-- [ ] **Stage 2: Donchian on 4h / 1d signals with vol-targeted sizing (3.5).**
+- [x] **Stage 2: Donchian on 4h / 1d signals with vol-targeted sizing (3.5).** Code fingerprint `7eaad4fa0c8f7174`; tables in `reports/phase1b/donchian_*.md`.
+  - **Code:** volatility-targeted sizing (3.5).
+    - `BaseStrategy` params `vol_target` (annualised, 0 = off) and `vol_lookback` (signal bars). They add an `rvol` column (`indicators.realized_vol`) and set `Signal.size_frac = vol_target / rvol`.
+    - `position_size(..., notional_frac=)` / `RiskManager.size` use that notional instead of stop-distance sizing, still capped by `max_position_pct`. Backtester and live engine both pass it.
+    - Tests cover sizing, annualisation, signal fraction, backtest notional, and no look-ahead with vol targeting.
+    - Not exposed as an env var yet; live trading stays blocked by the gate.
+  - **Setup:** 1h execution bars (not 5m: 4h/1d signals don't need 5m stop checks, and 6.8 years of 5m × 27 combos would take hours), 2020-01-01 → 2026-10-09, train 365d / test 90d, time stop off (`max_bars=100000`), min train trades 5 (4h) / 3 (1d).
+    - Lookbacks: 4h uses the default `24,48,96,192,384` (4–64 days); 1d uses `10,20,40,80,160` days.
+    - Sizing: "stop" = default 0.5% risk per trade, 25% notional cap; "VT" = `vol_target=0.3` over 30 days of returns, `max_position_pct=1.0`.
+
+    | Variant | Symbol | OOS % | B&H % | Max DD % | Trades | OOS Sharpe | B&H Sharpe | DSR | PBO |
+    |---|---|---|---|---|---|---|---|---|---|
+    | 4h, stop | BTC | +4.88 | +41.43 | −5.10 | 67 | 0.31 | 0.39 | 0.31 | 0.37 |
+    | 4h, stop | ETH | +14.61 | −29.65 | −8.64 | 61 | 0.66 | 0.26 | **0.83** | 0.65 |
+    | 4h, VT 30% | BTC | +25.92 | +41.43 | −18.20 | 68 | 0.40 | 0.39 | 0.47 | 0.53 |
+    | 4h, VT 30% | ETH | **+63.82** | −29.65 | −26.78 | 63 | 0.68 | 0.26 | **0.88** | 0.88 |
+    | 1d, stop | BTC | −1.85 | +11.98 | −2.25 | 21 | −0.35 | 0.30 | 0.04 | 0.43 |
+    | 1d, stop | ETH | +0.86 | −54.29 | −2.27 | 23 | 0.17 | 0.09 | 0.23 | 0.20 |
+    | 1d, VT 30% | BTC | −19.97 | +11.98 | −21.67 | 21 | −0.36 | 0.30 | 0.05 | 0.48 |
+    | 1d, VT 30% | ETH | −10.88 | −54.29 | −26.56 | 23 | −0.14 | 0.09 | 0.05 | 0.14 |
+
+    (OOS windows start ~2021-05 for 4h and ~2022-01 for 1d because of the warm-up, so buy & hold differs.)
+  - **Reading:**
+    - **4h is the best result of the whole project so far.** On ETH it beat buy & hold on return and Sharpe (0.66–0.68 vs 0.26) with DSR 0.83–0.88, but PBO is 0.65–0.88: which grid point wins in-sample doesn't carry over, so the edge may belong to the family rather than to the tuned parameters. On BTC it roughly matched buy & hold's Sharpe with far less exposure.
+    - Vol targeting scales the 4h result up (more exposure) without changing its Sharpe much, as the literature says (3.5).
+    - Daily signals fail: only ~21 trades in ~4.7 OOS years, and the 10–160-day lookbacks whipsawed in 2022–2025.
+    - **Still FAIL:** nothing reaches DSR > 0.95 with PBO < 0.5. DSR only deflates for the 27-point grid; these 4 variants per symbol are extra trials it doesn't account for.
+  - **Next for this family:** cut the grid (the high PBO says the 27 combos are mostly noise) to one or two robust settings and check that the 4h result survives; test 4h on SOL/BNB; and consider a portfolio across symbols rather than per-symbol gates.
 - [ ] **Stage 3: opening_range on longer history and more symbols.**
 - [ ] **Stage 4: regime and time-of-day filters (5.5, 5.2).**
 - [x] **Stage 5: `research_runs` Postgres table and dashboard Research tab.** *(done ahead of stages 2–4 while their runs computed)*

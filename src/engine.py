@@ -99,8 +99,8 @@ class TradingEngine:
                 log.info("%s signal skipped: %s", symbol, why)
             else:
                 equity = self.broker.equity(self.prices)
-                qty = self.risk.size(equity, sig.entry, sig.stop)
-                if qty * sig.entry >= 0.999 * self.risk.max_position_pct * equity:
+                qty = self.risk.size(equity, sig.entry, sig.stop, sig.size_frac)
+                if sig.size_frac is None and qty * sig.entry >= 0.999 * self.risk.max_position_pct * equity:
                     log.info("%s size capped by MAX_POSITION_PCT: effective risk %.2f%% (target %.2f%%)", symbol,
                              100 * qty * (sig.entry - sig.stop) / equity, 100 * self.risk.risk_per_trade)
                 if self.broker.open(symbol, qty, sig, self.strategy.name, now):
