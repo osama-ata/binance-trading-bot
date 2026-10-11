@@ -200,7 +200,16 @@ Slower signals cut trade counts by 4–7× and most of the fee bleed, but nothin
     - Daily signals fail: only ~21 trades in ~4.7 OOS years, and the 10–160-day lookbacks whipsawed in 2022–2025.
     - **Still FAIL:** nothing reaches DSR > 0.95 with PBO < 0.5. DSR only deflates for the 27-point grid; these 4 variants per symbol are extra trials it doesn't account for.
   - **Next for this family:** cut the grid (the high PBO says the 27 combos are mostly noise) to one or two robust settings and check that the 4h result survives; test 4h on SOL/BNB; and consider a portfolio across symbols rather than per-symbol gates.
-- [ ] **Stage 3: opening_range on longer history and more symbols.**
+- [x] **Stage 3: opening_range on longer history and more symbols.** Code `7eaad4fa0c8f7174`; table in `reports/phase1b/opening_range_5m_2022.md`. 5m bars, 2022-01-01 → 2026-10-09, train 30d / test 7d (same setup as Phase 1), 244 folds, about 1h55m per symbol.
+
+  | Symbol | OOS % | B&H % | Max DD % | Trades | OOS Sharpe | B&H Sharpe | DSR | PBO |
+  |---|---|---|---|---|---|---|---|---|
+  | BTC | −22.78 | +118.98 | −24.25 | 442 | −1.97 | 0.55 | 0.00 | 0.27 |
+  | ETH | −23.36 | −11.88 | −25.66 | 588 | −1.53 | 0.28 | 0.00 | 0.39 |
+  | SOL | −25.16 | +6.21 | −26.71 | 812 | −1.23 | 0.46 | 0.00 | 0.29 |
+  | BNB | −21.04 | +96.47 | −22.48 | 431 | −1.76 | 0.52 | 0.00 | 0.76 |
+
+  - **Verdict: drop opening_range.** The Phase 1 ETH result (+0.96%, DSR 0.45 over 6 months) was luck: over 4.75 years it loses about 21–25% on every symbol, a steady bleed of roughly −5%/year at Sharpe −1.2 to −2.0.
 - [ ] **Stage 4: regime and time-of-day filters (5.5, 5.2).**
 - [x] **Stage 5: `research_runs` Postgres table and dashboard Research tab.** *(done ahead of stages 2–4 while their runs computed)*
   - `database.ResearchRun` (table `research_runs`, keyed by the cache key): spec, risk and params as JSON, plus the headline numbers (OOS return, B&H, max DD, trades, folds, OOS and B&H Sharpe, DSR, PBO, seconds). NaN is stored as NULL.
