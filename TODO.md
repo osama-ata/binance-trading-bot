@@ -175,7 +175,12 @@ Slower signals cut trade counts by 4–7× and most of the fee bleed, but nothin
 - [ ] **Stage 2: Donchian on 4h / 1d signals with vol-targeted sizing (3.5).**
 - [ ] **Stage 3: opening_range on longer history and more symbols.**
 - [ ] **Stage 4: regime and time-of-day filters (5.5, 5.2).**
-- [ ] **Stage 5: `research_runs` Postgres table and dashboard Research tab.**
+- [x] **Stage 5: `research_runs` Postgres table and dashboard Research tab.** *(done ahead of stages 2–4 while their runs computed)*
+  - `database.ResearchRun` (table `research_runs`, keyed by the cache key): spec, risk and params as JSON, plus the headline numbers (OOS return, B&H, max DD, trades, folds, OOS and B&H Sharpe, DSR, PBO, seconds). NaN is stored as NULL.
+  - `research_cache.save` upserts each new run (best effort: 3 s connect timeout, then it logs once and stops trying; `RESEARCH_DB=0` turns it off). The files in `data/research/` stay the source of truth for equity and folds.
+  - `scripts/research_db.py` backfills from `data/research/`; 27 existing runs loaded.
+  - The dashboard's new **🔬 Research** tab has filters (strategy, symbol, code fingerprint, passes-gate only), a DSR-vs-PBO scatter with the gate region shaded, the run table, and each run's stitched OOS equity and folds.
+  - Tests: upsert, NaN to NULL, no duplicates, a database failure never raises; tests never touch the real database (autouse fixture).
 
 ---
 

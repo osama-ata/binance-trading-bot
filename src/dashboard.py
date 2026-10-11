@@ -6,6 +6,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from sqlalchemy import text
 
+import research_cache
 from backtester import BacktestConfig, run_backtest, summarize, walk_forward
 from config import settings
 from data import load_klines
@@ -67,7 +68,7 @@ def strategy_params(strategy: str, key: str) -> dict:
     return params
 
 
-tab_live, tab_bt, tab_wf = st.tabs(["📈 Live / Paper", "🛠️ Backtest", "🔁 Walk-forward"])
+tab_live, tab_bt, tab_wf, tab_research = st.tabs(["📈 Live / Paper", "🛠️ Backtest", "🔁 Walk-forward", "🔬 Research"])
 
 # ---------------- Live / paper monitoring ----------------
 with tab_live:
@@ -198,3 +199,71 @@ with tab_wf:
                     st.dataframe(folds, width="stretch", hide_index=True)
             except Exception as e:
                 st.exception(e)
+
+# ---------------- Research runs ----------------
+DSR_GATE, PBO_GATE = 0.95, 0.5
+
+with tab_research:
+    st.caption("Every cached walk-forward run (scripts/wf_report.py), from the `research_runs` table. Out-of-sample "
+               f"only. The gate to move a strategy towards live trading is DSR > {DSR_GATE} and PBO < {PBO_GATE}. "
+               "Backfill older runs with `uv run python scripts/research_db.py`.")
+    runs = query("SELECT * FROM research_runs ORDER BY created_at DESC")
+    if runs.empty:
+        st.info("No research runs in the database yet.")
+    else:
+        c1, c2, c3, c4 = st.columns(4)
+        f_strat = c1.multiselect("Strategy", sorted(runs["strategy"].dropna().unique()))
+        f_sym = c2.multiselect("Symbol", sorted(runs["symbol"].dropna().unique()))
+        f_code = c3.multiselect("Code fingerprint", list(dict.fromkeys(runs["code"].dropna())),
+                                help="Results from different code versions are not comparable one to one")
+        only_pass = c4.toggle("Only runs that pass the gate")
+        view = runs
+        for col, sel in (("strategy", f_strat), ("symbol", f_sym), ("code", f_code)):
+            if sel:
+                view = view[view[col].isin(sel)]
+        view = view.assign(passes=(view["dsr"] > DSR_GATE) & (view["pbo"] < PBO_GATE),
+                           variant=view["params"].map(lambda p: ", ".join(f"{k}={v}" for k, v in (p or {}).items()))
+                           + view["risk"].map(lambda r: "".join(f" | {k}={v}" for k, v in (r or {}).items())))
+        if only_pass:
+            view = view[view["passes"]]
+
+        k1, k2, k3 = st.columns(3)
+        k1.metric("Runs", len(view))
+        k2.metric("Pass the gate", int(view["passes"].sum()))
+        k3.metric("Best DSR", f"{view['dsr'].max():.2f}" if view["dsr"].notna().any() else "—")
+
+        plot = view.dropna(subset=["dsr", "pbo"])
+        if not plot.empty:
+            fig = go.Figure()
+            fig.add_shape(type="rect", x0=DSR_GATE, x1=1.0, y0=0, y1=PBO_GATE, fillcolor="rgba(44,160,44,0.12)",
+                          line_width=0)
+            fig.add_scatter(x=plot["dsr"], y=plot["pbo"], mode="markers",
+                            marker=dict(size=9, color=plot["oos_return_pct"], colorscale="RdYlGn", cmid=0,
+                                        colorbar=dict(title="OOS %")),
+                            text=plot["strategy"] + " " + plot["symbol"] + " " + plot["interval"] + "/"
+                            + plot["signal_tf"].fillna("") + "<br>" + plot["variant"],
+                            hovertemplate="%{text}<br>DSR %{x:.2f}, PBO %{y:.2f}<extra></extra>")
+            fig.update_layout(title="Deflated Sharpe vs PBO (green = passes the gate)", height=380,
+                              xaxis=dict(title="DSR", range=[-0.02, 1.02]),
+                              yaxis=dict(title="PBO", range=[-0.02, 1.02]), margin=dict(t=40, b=10))
+            st.plotly_chart(fig, width="stretch")
+
+        cols = ["created_at", "strategy", "symbol", "interval", "signal_tf", "variant", "start", "end", "train_days",
+                "test_days", "oos_return_pct", "buy_hold_pct", "oos_max_dd_pct", "oos_trades", "folds",
+                "oos_sharpe_ann", "buy_hold_sharpe_ann", "dsr", "pbo", "passes", "key"]
+        st.dataframe(view[cols], width="stretch", hide_index=True)
+
+        key = st.selectbox("Run details", view["key"],
+                           format_func=lambda k: " · ".join(str(view.set_index("key").loc[k, c]) for c in
+                                                            ("strategy", "symbol", "interval", "signal_tf", "variant")))
+        if key:
+            run = research_cache.load(key)
+            if run is None:
+                st.warning("Run files are not on this machine (data/research/ is not in git).")
+            else:
+                if "equity" in run:
+                    eq = run["equity"]
+                    st.plotly_chart(go.Figure(go.Scatter(x=eq.index, y=eq)).update_layout(
+                        title="Stitched out-of-sample equity", height=300, margin=dict(t=40, b=10)), width="stretch")
+                if "folds" in run:
+                    st.dataframe(run["folds"], width="stretch", hide_index=True)

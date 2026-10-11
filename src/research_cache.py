@@ -10,22 +10,32 @@ never reused. Results live in data/research/<key>/ (gitignored, like the kline c
     folds.csv      per-fold chosen params and test results
     equity.parquet stitched out-of-sample equity curve
 
-data/research/index.csv gets one line per computed run, for browsing.
+data/research/index.csv gets one line per computed run, for browsing, and the run's headline numbers are also
+written to the Postgres `research_runs` table (best effort: a missing database never fails a run; backfill with
+`scripts/research_db.py`). Set RESEARCH_DB=0 to skip the database.
 """
 import fcntl
 import hashlib
 import json
+import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+log = logging.getLogger(__name__)
+
 SRC = Path(__file__).resolve().parent
 ROOT = SRC.parent / "data" / "research"
 # Files whose contents change backtest results. Engine/broker/dashboard code does not.
 RESULT_CODE = ["backtester.py", "risk.py", "indicators.py", "overfitting.py", "data.py", "binance_client.py",
                "strategies/*.py"]
+
+
+DB_ENABLED = os.getenv("RESEARCH_DB", "1") != "0"
+_db_failed = False
 
 
 @lru_cache(maxsize=1)
@@ -74,4 +84,37 @@ def save(key: str, spec: dict, summary: dict, folds: pd.DataFrame | None = None,
     with open(ROOT / ".index.lock", "w") as lock:  # parallel report workers append concurrently
         fcntl.flock(lock, fcntl.LOCK_EX)
         row.to_csv(index, mode="a", header=not index.exists(), index=False)
+    record_db(key, {**spec, "_code": code_fingerprint()}, summary)
     return d
+
+
+@lru_cache(maxsize=1)
+def _db_sessions():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from config import settings
+    from database import ResearchRun
+
+    url = settings.database_url
+    engine = create_engine(url, connect_args={"connect_timeout": 3} if url.startswith("postgresql") else {})
+    ResearchRun.__table__.create(engine, checkfirst=True)
+    return sessionmaker(bind=engine)
+
+
+def record_db(key: str, spec: dict, summary: dict, created_at=None) -> bool:
+    """Upsert one run into `research_runs`. Returns False (and logs once) if the database is unavailable."""
+    global _db_failed
+    if not DB_ENABLED or _db_failed:
+        return False
+    from database import ResearchRun
+
+    try:
+        with _db_sessions()() as session:
+            session.merge(ResearchRun.from_run(key, spec, summary, created_at))
+            session.commit()
+        return True
+    except Exception as e:  # research must not depend on the database being up
+        _db_failed = True
+        log.warning("research_runs not updated (%s); run scripts/research_db.py later to backfill", e)
+        return False

@@ -2,6 +2,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import research_cache
+
+
+@pytest.fixture(autouse=True)
+def _no_research_db(monkeypatch):
+    """Tests never write research runs to the real database."""
+    monkeypatch.setattr(research_cache, "DB_ENABLED", False)
+
 
 @pytest.fixture
 def ohlcv() -> pd.DataFrame:
