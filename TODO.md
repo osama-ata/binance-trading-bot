@@ -10,6 +10,7 @@
 > **Handoff (2026-10-11): Phase 1 finished on the Mac Studio.** Work continues there (`~/coding/binance-trading-bot`, 20 cores, use `--jobs 16`).
 > - The missing `donchian_ensemble` ETHUSDT 15m run and the 5m-exec / 1h-signal comparison (`reports/phase1/final_5m_exec_1h_signals.md`) are done. Neither changes the verdict (still **FAIL**).
 > - The Docker stack runs again: the Dockerfile now installs from `uv.lock` (`pip install .` failed with no build backend and no README in the build context). The compose db's host port is `${POSTGRES_PORT:-5432}`; on the Studio, 5432 belongs to another project, so `.env` sets `POSTGRES_PORT=5433`.
+> - **Phase 1c (2026-10-11): provisional PASS.** The 4h Donchian, with fixed parameters on an equal-weight BTC/ETH/SOL/BNB portfolio, scored Sharpe 0.97 vs 0.62 for the B&H basket, max DD −20% vs −81%, DSR 0.96, PBO 0.49. The margin is thin (DSR 0.93–0.94 if the whole project's trials are counted; residual edge fragile), so **the next step is a forward paper test**, then Phase 2. See "Phase 1c" under section 1.
 > - **Phase 1b (2026-10-11): done, gate still FAIL.** It covered longer history, Donchian on 4h/1d signals with vol-targeted sizing, opening_range on 4 symbols since 2022, regime/time-of-day filters, and the `research_runs` table plus the dashboard Research tab. See "Phase 1b" under section 1.
 >   - The only lead is **Donchian on 4h signals** (ETH OOS Sharpe 0.66–0.68 vs B&H 0.26, DSR 0.83–0.88, but PBO 0.65–0.88).
 >   - Every 5m strategy loses over 2022–2026, with or without filters. opening_range is dropped.
@@ -288,6 +289,32 @@ Slower signals cut trade counts by 4–7× and most of the fee bleed, but nothin
   - Positive in a **majority of calendar years**.
   - Sharpe > 0 for **every** sweep variant and at **2× slippage**.
 - If it passes, also run the residual-edge check on the portfolio vs the buy & hold basket before proposing Phase 2.
+
+**Results (2026-10-11, code `830f7992d589c726`; `reports/phase1c/donchian_4h_robustness.md`):**
+
+| | CAGR | Vol | Sharpe | Max DD |
+|---|---|---|---|---|
+| Donchian 4h portfolio (BTC/ETH/SOL/BNB, equal weight) | **14.0%** | 14.7% | **0.97** | **−19.7%** |
+| Buy & hold basket | 21.1% | 62.6% | 0.62 | −81.2% |
+
+- **Per symbol:** Sharpe BTC 0.61 / ETH 0.73 / SOL 0.61 / BNB 0.86, against B&H 0.55 / 0.34 / 0.73 / 0.52. In the market about 25–30% of the time, roughly 50 trades each over 5.3 years. SOL and BNB were not used in any earlier selection.
+- **Year by year:** 2021 (part) +14.6, 2022 **−9.4** (B&H −74), 2023 +38.3, 2024 +14.9, 2025 +14.7, 2026 (part) +6.8.
+- **Parameter sweep:** portfolio Sharpe 0.64–1.12 across all variants, every one positive. The weakest is the slowest lookbacks (BNB −0.08 there).
+- **Costs:** Sharpe 0.96 / 0.95 at 2×/3× slippage and 0.93 at a 0.15% fee (about 50 trades per symbol, so costs barely matter at 4h).
+- **Pre-registered gate: PASS, narrowly.** DSR **0.96** (bar 0.95), PBO **0.49** (bar 0.5), positive in 5/6 years, every variant positive, survives 2× slippage.
+
+**Disclosed checks after the gate** (they don't change the pre-registered verdict, but they bound how much to trust it):
+- **Duplicate variants.** The ensemble score moves in steps of 0.2, so entry 0.5 = base, 0.7 = 0.8, exit 0.0 = 0.1 and exit 0.3 = base: 11 distinct variants, not 15. On the distinct set: DSR 0.958, PBO 0.456, so the result still passes.
+- **Trial count.** The 4h Donchian was picked after Phase 1b had looked at BTC/ETH over an overlapping window. Counting about 30–60 trials across the project (same Sharpe dispersion), DSR falls to **0.94–0.93**, just under the bar.
+  - PSR vs 0 is 0.989: the portfolio Sharpe is very likely above zero, just not proven above the best-of-many-tries bar.
+- **Residual edge** (`reports/phase1c/residual_edge_portfolio.report.md`, primary baseline = buy & hold basket, sensitivity = BTC buy & hold):
+  - Alpha **+9.0%/yr** (HAC t 1.67), beta 0.13, R² 0.32, residual edge ratio **0.745** (bar 0.75). Alpha is positive in only 35% of rolling 90-day windows. Status RESIDUAL_FRAGILE / ELIGIBLE.
+  - Most of the active return comes in BTC bull regimes (+14.9%/yr, vs +2.6%/yr in bear regimes). The strategy mainly adds value by being in during trends and out during the 2022 crash.
+
+**Verdict: provisional pass.** It is the first configuration to clear the gate, and it is robust to parameters and costs. But the margin is thin, and the evidence is still in-sample at the research-programme level. **Confirmation must come from data the research hasn't touched: forward paper trading.**
+- **Live mapping of the backtest** (each symbol ran on the full equity; the portfolio averaged them, i.e. 1/4 of capital per sleeve): `STRATEGY=donchian_ensemble`, `SYMBOLS=BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT`, `INTERVAL=1h`, `SIGNAL_TF=4h`, vol target 0.3/4 = **0.075** on total equity, `MAX_POSITION_PCT=0.25`, `MAX_OPEN_POSITIONS=4`, time stop off.
+  - Needs env plumbing for `vol_target` / `vol_lookback` / `max_bars` (not yet exposed).
+  - Differences from the backtest: sleeves are sized at entry and not rebalanced daily, and the daily-loss / cooldown rules are shared across symbols instead of per sleeve.
 
 ---
 

@@ -1,0 +1,240 @@
+{
+  "analysis_type": "returns_based_residual_edge",
+  "data": {
+    "annualization_factor": 365,
+    "baseline_columns": [
+      "btc_buy_hold_return",
+      "buy_hold_basket_return"
+    ],
+    "configured_minimum_observations": 60,
+    "declarations": {
+      "analysis_scope": "out_of_sample",
+      "baseline_return_basis": "net",
+      "baseline_selection": "predeclared",
+      "strategy_return_basis": "net",
+      "universe_data": "not_applicable"
+    },
+    "effective_minimum_observations": 60,
+    "end_date": "2026-10-09",
+    "frequency": "daily",
+    "observation_count": 1956,
+    "regime_columns": [
+      "btc_trend_regime"
+    ],
+    "return_unit_normalized": "decimal",
+    "start_date": "2021-06-02",
+    "strategy_column": "strategy_return"
+  },
+  "method_notes": [
+    "OLS includes an intercept.",
+    "Residual edge ratio is annualized alpha divided by annualized residual volatility.",
+    "HAC standard errors address heteroskedasticity and serial correlation asymptotically.",
+    "Results describe declared return-series exposure, not holdings-based Brinson attribution."
+  ],
+  "models": [
+    {
+      "adjusted_r_squared": 0.3185864681,
+      "alpha": {
+        "annualized_arithmetic": 0.0902830333,
+        "hac_standard_error_periodic": 0.0001483554,
+        "periodic": 0.0002473508,
+        "t_stat": 1.6672847778
+      },
+      "baseline_columns": [
+        "buy_hold_basket_return"
+      ],
+      "coefficients": [
+        {
+          "estimate": 0.0002473508,
+          "hac_standard_error": 0.0001483554,
+          "name": "intercept",
+          "t_stat": 1.6672847778
+        },
+        {
+          "estimate": 0.1326116118,
+          "hac_standard_error": 0.0137552705,
+          "name": "buy_hold_basket_return",
+          "t_stat": 9.6407854939
+        }
+      ],
+      "diagnostic_status": "RESIDUAL_FRAGILE",
+      "hac_lags": 7,
+      "name": "buy_hold_basket",
+      "observation_count": 1956,
+      "r_squared": 0.3189350172,
+      "residual": {
+        "active_return_max_drawdown": -0.1235266515,
+        "annualized_volatility": 0.1212184444,
+        "durbin_watson": 2.0333505072,
+        "lag_one_autocorrelation": -0.0171721005,
+        "periodic_volatility": 0.0063448634,
+        "residual_edge_ratio": 0.7447961711
+      },
+      "role": "primary",
+      "rolling": {
+        "enabled": true,
+        "failed_window_count": 0,
+        "latest": {
+          "annualized_alpha": 0.0904620724,
+          "end_index": 1955,
+          "r_squared": 0.789749021,
+          "residual_edge_ratio": 0.7616902041
+        },
+        "positive_alpha_fraction": 0.3486877343,
+        "r_squared": {
+          "max": 0.8539187348,
+          "median": 0.4254453018,
+          "min": 0.0187437521
+        },
+        "residual_edge_ratio": {
+          "max": 4.3155221117,
+          "median": -0.7702015741,
+          "min": -5.380087215
+        },
+        "window": 90,
+        "window_count": 1867
+      },
+      "status_reasons": [
+        "Residual evidence does not clear all robustness thresholds.",
+        "Rolling alpha is positive in too few windows."
+      ],
+      "vif": {
+        "buy_hold_basket_return": 1.0
+      }
+    },
+    {
+      "adjusted_r_squared": 0.2504961632,
+      "alpha": {
+        "annualized_arithmetic": 0.101341664,
+        "hac_standard_error_periodic": 0.0001596452,
+        "periodic": 0.0002776484,
+        "t_stat": 1.7391585343
+      },
+      "baseline_columns": [
+        "btc_buy_hold_return"
+      ],
+      "coefficients": [
+        {
+          "estimate": 0.0002776484,
+          "hac_standard_error": 0.0001596452,
+          "name": "intercept",
+          "t_stat": 1.7391585343
+        },
+        {
+          "estimate": 0.1384268361,
+          "hac_standard_error": 0.0142372603,
+          "name": "btc_buy_hold_return",
+          "t_stat": 9.7228562828
+        }
+      ],
+      "diagnostic_status": "RESIDUAL_FRAGILE",
+      "hac_lags": 7,
+      "name": "btc_buy_hold",
+      "observation_count": 1956,
+      "r_squared": 0.2508795411,
+      "residual": {
+        "active_return_max_drawdown": -0.1371102829,
+        "annualized_volatility": 0.1271306477,
+        "durbin_watson": 2.0070746339,
+        "lag_one_autocorrelation": -0.0036294637,
+        "periodic_volatility": 0.0066543222,
+        "residual_edge_ratio": 0.7971458166
+      },
+      "role": "sensitivity",
+      "rolling": {
+        "enabled": true,
+        "failed_window_count": 0,
+        "latest": {
+          "annualized_alpha": 0.1663846464,
+          "end_index": 1955,
+          "r_squared": 0.7391019227,
+          "residual_edge_ratio": 1.2576467117
+        },
+        "positive_alpha_fraction": 0.4134975897,
+        "r_squared": {
+          "max": 0.7413962014,
+          "median": 0.3196735143,
+          "min": 0.0087216011
+        },
+        "residual_edge_ratio": {
+          "max": 4.4543787863,
+          "median": -0.4654638189,
+          "min": -5.9961945212
+        },
+        "window": 90,
+        "window_count": 1867
+      },
+      "status_reasons": [
+        "Residual evidence does not clear all robustness thresholds.",
+        "Rolling alpha is positive in too few windows."
+      ],
+      "vif": {
+        "btc_buy_hold_return": 1.0
+      }
+    }
+  ],
+  "primary_model": "buy_hold_basket",
+  "regime_analysis": {
+    "btc_trend_regime": [
+      {
+        "active_return_metrics": {
+          "annualized_arithmetic_return": 0.0259931697,
+          "annualized_volatility": 0.1040017115,
+          "max_drawdown": -0.1235266515,
+          "periodic_mean": 7.12142e-05,
+          "periodic_volatility": 0.0054436984,
+          "sharpe_zero_rate": 0.2499302113
+        },
+        "evidence_status": "ADEQUATE",
+        "label": "bear",
+        "observation_count": 932,
+        "positive_fraction": 0.474248927
+      },
+      {
+        "active_return_metrics": {
+          "annualized_arithmetic_return": 0.1487968543,
+          "annualized_volatility": 0.1349718834,
+          "max_drawdown": -0.1023953786,
+          "periodic_mean": 0.0004076626,
+          "periodic_volatility": 0.0070647513,
+          "sharpe_zero_rate": 1.1024285252
+        },
+        "evidence_status": "ADEQUATE",
+        "label": "bull",
+        "observation_count": 1024,
+        "positive_fraction": 0.4990234375
+      }
+    ]
+  },
+  "schema_version": "1.0",
+  "source": {
+    "config_name": "residual_edge_portfolio.json",
+    "csv_name": "residual_edge_portfolio.csv"
+  },
+  "strategy_metrics": {
+    "annualized_arithmetic_return": 0.1418667644,
+    "annualized_volatility": 0.1468839796,
+    "max_drawdown": -0.1969934319,
+    "periodic_mean": 0.0003886761,
+    "periodic_volatility": 0.0076882589,
+    "sharpe_zero_rate": 0.9658423252
+  },
+  "verdict": {
+    "decision_eligibility": "ELIGIBLE",
+    "decision_grade": true,
+    "reasons": [
+      "Residual evidence does not clear all robustness thresholds.",
+      "Rolling alpha is positive in too few windows."
+    ],
+    "status": "RESIDUAL_FRAGILE",
+    "thresholds": {
+      "alpha_t_stat_min": 2.0,
+      "baseline_explained_r2_min": 0.75,
+      "residual_edge_ratio_min": 0.75,
+      "rolling_positive_fraction_min": 0.6,
+      "weak_edge_ratio_max": 0.5
+    },
+    "trade_authorization": "NOT_AUTHORIZED"
+  },
+  "warnings": []
+}
